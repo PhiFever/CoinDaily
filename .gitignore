@@ -1,0 +1,59 @@
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Configuration files (contains sensitive data)
+config.yaml
+
+# Claude Code
+.claude
+
+# Go build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+/dist/
+/build/
+
+# Go test artifacts
+*.test
+*.out
+*.prof
+
+# Go coverage files
+coverage.txt
+coverage.html
+
+# Dependency directories
+vendor/
+
+# Go workspace file
+go.work
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# Ubuntu/Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+.DS_Store
+Thumbs.db
+
+# Binary output (add your binary name if different)
+CoinDaily
+coindaily
