@@ -8,6 +8,10 @@ import (
 )
 
 type Config struct {
+	CoinGecko struct {
+		APIKey string `yaml:"api_key"`
+	} `yaml:"coingecko"`
+	
 	Email struct {
 		SMTPServer string `yaml:"smtp_server"`
 		SMTPPort   int    `yaml:"smtp_port"`
@@ -44,6 +48,9 @@ func LoadConfig(configPath string) (*Config, error) {
 }
 
 func validateConfig(config *Config) error {
+	if config.CoinGecko.APIKey == "" {
+		return fmt.Errorf("coingecko.api_key is required")
+	}
 	if config.Email.SMTPServer == "" {
 		return fmt.Errorf("email.smtp_server is required")
 	}

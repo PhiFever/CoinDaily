@@ -23,12 +23,14 @@ type CoinPrice struct {
 
 type CoinGeckoClient struct {
 	baseURL string
+	apiKey  string
 	client  *http.Client
 }
 
-func NewCoinGeckoClient() *CoinGeckoClient {
+func NewCoinGeckoClient(apiKey string) *CoinGeckoClient {
 	return &CoinGeckoClient{
 		baseURL: "https://api.coingecko.com/api/v3",
+		apiKey:  apiKey,
 		client: &http.Client{
 			Timeout: 30 * time.Second,
 		},
@@ -40,7 +42,14 @@ func (c *CoinGeckoClient) GetCoinPrices(coinIDs []string) ([]CoinPrice, error) {
 	url := fmt.Sprintf("%s/coins/markets?vs_currency=usd&ids=%s&order=market_cap_desc&per_page=100&page=1&sparkline=false", 
 		c.baseURL, idsParam)
 	
-	resp, err := c.client.Get(url)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	
+	req.Header.Set("x-cg-demo-api-key", c.apiKey)
+	
+	resp, err := c.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch data from CoinGecko: %w", err)
 	}

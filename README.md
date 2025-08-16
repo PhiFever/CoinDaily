@@ -15,27 +15,7 @@ CoinDaily 是一个用 Go 语言编写的工具，它会每天自动获取加密
 
 ### 1. 配置邮箱设置
 
-编辑 `config.yaml` 文件：
-
-```yaml
-email:
-  smtp_server: "smtp.gmail.com"
-  smtp_port: 587
-  username: "your-email@gmail.com"
-  password: "your-app-password"  # 对于Gmail，需要使用应用密码
-  to: "recipient@example.com"
-
-coins:
-  - "bitcoin"
-  - "ethereum" 
-  - "binancecoin"
-  - "cardano"
-  - "solana"
-
-schedule:
-  hour: 9    # 每天9点
-  minute: 0  # 0分发送
-```
+参见 `config.yaml.example` 编辑 `config.yaml` 文件：
 
 ### 2. 编译并运行
 
@@ -80,7 +60,7 @@ go build -o coindaily
 如果使用 Gmail，需要：
 
 1. 启用两步验证
-2. 生成应用密码（不是您的常规密码）
+2. 生成[应用密码](https://support.google.com/mail/answer/185833?hl=en#zippy=%2Cwhy-you-may-need-an-app-password)（不是您的常规密码）
 3. 在配置文件中使用应用密码
 
 ## 报表内容
@@ -93,22 +73,3 @@ go build -o coindaily
 - 24小时价格变化率
 - 市值
 - 24小时交易量
-
-## 项目结构
-
-```
-CoinDaily/
-├── main.go          # 主程序入口
-├── config.go        # 配置文件处理
-├── coingecko.go     # CoinGecko API 客户端
-├── email.go         # 邮件发送功能
-├── report.go        # HTML 报表生成
-├── scheduler.go     # 定时任务调度
-├── config.yaml      # 配置文件
-├── go.mod           # Go 模块文件
-└── README.md        # 说明文档
-```
-
-## 许可证
-
-本项目基于 MIT 许可证开源。

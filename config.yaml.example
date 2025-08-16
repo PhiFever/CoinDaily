@@ -1,0 +1,24 @@
+# CoinGecko API 配置
+coingecko:
+  api_key: "your_coingecko_api_key_here"
+
+# 邮件配置
+email:
+  smtp_server: "smtp.gmail.com"
+  smtp_port: 587
+  username: "your_email@gmail.com"
+  password: "your_app_password"
+  to: "recipient@example.com"
+
+# 要跟踪的加密货币 (使用 CoinGecko ID)
+coins:
+  - "bitcoin"
+  - "ethereum"
+  - "cardano"
+  - "polkadot"
+  - "chainlink"
+
+# 定时发送时间
+schedule:
+  hour: 9    # 24小时制
+  minute: 0

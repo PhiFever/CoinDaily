@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"log"
-	"os"
 	"time"
 )
 
@@ -26,7 +25,7 @@ func NewScheduler(config *Config) *Scheduler {
 
 	return &Scheduler{
 		config:      config,
-		coinClient:  NewCoinGeckoClient(),
+		coinClient:  NewCoinGeckoClient(config.CoinGecko.APIKey),
 		emailSender: NewEmailSender(emailConfig),
 		reportGen:   NewReportGenerator(),
 		stopChan:    make(chan bool),
@@ -81,12 +80,12 @@ func (s *Scheduler) runDailyReport() {
 	log.Printf("成功获取到 %d 个加密货币的价格数据，详细数据：%v", len(coins), coins)
 
 	htmlReport := s.reportGen.GenerateHTMLReport(coins)
-	// 保存到本地进行测试
-	err = os.WriteFile("report.html", []byte(htmlReport), 0644)
-	if err != nil {
-		log.Printf("保存报表到本地失败: %v", err)
-		return
-	}
+	// // 保存到本地进行测试
+	// err = os.WriteFile("report.html", []byte(htmlReport), 0644)
+	// if err != nil {
+	// 	log.Printf("保存报表到本地失败: %v", err)
+	// 	return
+	// }
 
 	subject := fmt.Sprintf("每日加密货币价格报表 - %s", time.Now().Format("2006年01月02日"))
 
