@@ -11,17 +11,22 @@ type Config struct {
 	CoinGecko struct {
 		APIKey string `yaml:"api_key"`
 	} `yaml:"coingecko"`
-	
+
 	Email struct {
-		SMTPServer string `yaml:"smtp_server"`
-		SMTPPort   int    `yaml:"smtp_port"`
-		Username   string `yaml:"username"`
-		Password   string `yaml:"password"`
-		To         string `yaml:"to"`
+		SMTPServer string   `yaml:"smtp_server"`
+		SMTPPort   int      `yaml:"smtp_port"`
+		Username   string   `yaml:"username"`
+		Password   string   `yaml:"password"`
+		To         []string `yaml:"to"`
 	} `yaml:"email"`
-	
+
+	Proxy struct {
+		Enabled bool   `yaml:"enabled"`
+		URL     string `yaml:"url"`
+	} `yaml:"proxy"`
+
 	Coins []string `yaml:"coins"`
-	
+
 	Schedule struct {
 		Hour   int `yaml:"hour"`
 		Minute int `yaml:"minute"`
@@ -63,8 +68,8 @@ func validateConfig(config *Config) error {
 	if config.Email.Password == "" {
 		return fmt.Errorf("email.password is required")
 	}
-	if config.Email.To == "" {
-		return fmt.Errorf("email.to is required")
+	if len(config.Email.To) == 0 {
+		return fmt.Errorf("email.to is required (at least one recipient)")
 	}
 	if len(config.Coins) == 0 {
 		return fmt.Errorf("at least one coin must be specified")

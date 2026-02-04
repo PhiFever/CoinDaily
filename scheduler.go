@@ -16,16 +16,18 @@ type Scheduler struct {
 
 func NewScheduler(config *Config) *Scheduler {
 	emailConfig := EmailConfig{
-		SMTPServer: config.Email.SMTPServer,
-		SMTPPort:   config.Email.SMTPPort,
-		Username:   config.Email.Username,
-		Password:   config.Email.Password,
-		To:         config.Email.To,
+		SMTPServer:   config.Email.SMTPServer,
+		SMTPPort:     config.Email.SMTPPort,
+		Username:     config.Email.Username,
+		Password:     config.Email.Password,
+		To:           config.Email.To,
+		ProxyEnabled: config.Proxy.Enabled,
+		ProxyURL:     config.Proxy.URL,
 	}
 
 	return &Scheduler{
 		config:      config,
-		coinClient:  NewCoinGeckoClient(config.CoinGecko.APIKey),
+		coinClient:  NewCoinGeckoClient(config.CoinGecko.APIKey, config.Proxy.Enabled, config.Proxy.URL),
 		emailSender: NewEmailSender(emailConfig),
 		reportGen:   NewReportGenerator(),
 		stopChan:    make(chan bool),

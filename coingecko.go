@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -27,13 +28,25 @@ type CoinGeckoClient struct {
 	client  *http.Client
 }
 
-func NewCoinGeckoClient(apiKey string) *CoinGeckoClient {
+func NewCoinGeckoClient(apiKey string, proxyEnabled bool, proxyURL string) *CoinGeckoClient {
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+
+	// 如果启用了代理，配置 HTTP Transport
+	if proxyEnabled && proxyURL != "" {
+		parsedProxyURL, err := url.Parse(proxyURL)
+		if err == nil {
+			client.Transport = &http.Transport{
+				Proxy: http.ProxyURL(parsedProxyURL),
+			}
+		}
+	}
+
 	return &CoinGeckoClient{
 		baseURL: "https://api.coingecko.com/api/v3",
 		apiKey:  apiKey,
-		client: &http.Client{
-			Timeout: 30 * time.Second,
-		},
+		client:  client,
 	}
 }
 
