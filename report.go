@@ -178,3 +178,57 @@ func formatLargeNumber(num float64) string {
 	}
 	return fmt.Sprintf("%.2f", num)
 }
+
+// GenerateDiscordEmbed 生成 Discord Embed 格式的报表
+func (r *ReportGenerator) GenerateDiscordEmbed(coins []CoinPrice) *DiscordEmbed {
+	now := time.Now()
+	dateStr := now.Format("2006年01月02日")
+
+	// 根据整体涨跌情况确定颜色
+	color := 0xFFD700 // 默认金色
+	if len(coins) > 0 {
+		totalChange := 0.0
+		for _, coin := range coins {
+			totalChange += coin.PriceChangePerc24h
+		}
+		avgChange := totalChange / float64(len(coins))
+		if avgChange >= 0 {
+			color = 0x27AE60 // 绿色 - 整体上涨
+		} else {
+			color = 0xE74C3C // 红色 - 整体下跌
+		}
+	}
+
+	// 构建字段
+	fields := make([]EmbedField, 0, len(coins))
+	for _, coin := range coins {
+		// 格式化价格变化符号
+		changeSymbol := ""
+		if coin.PriceChangePerc24h >= 0 {
+			changeSymbol = "+"
+		}
+
+		// 构建字段值
+		value := fmt.Sprintf("**$%s**\n24h: %s%.2f%% | 市值: $%s",
+			formatNumber(coin.CurrentPrice),
+			changeSymbol,
+			coin.PriceChangePerc24h,
+			formatLargeNumber(coin.MarketCap),
+		)
+
+		fields = append(fields, EmbedField{
+			Name:   fmt.Sprintf("%s (%s)", coin.Name, strings.ToUpper(coin.Symbol)),
+			Value:  value,
+			Inline: true,
+		})
+	}
+
+	return &DiscordEmbed{
+		Title:       "🚀 每日加密货币价格报表",
+		Description: dateStr,
+		Color:       color,
+		Fields:      fields,
+		Footer:      &EmbedFooter{Text: "数据来源: CoinGecko API | CoinDaily 自动生成"},
+		Timestamp:   now.Format(time.RFC3339),
+	}
+}

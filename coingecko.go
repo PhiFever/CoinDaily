@@ -50,18 +50,41 @@ func NewCoinGeckoClient(apiKey string, proxyEnabled bool, proxyURL string) *Coin
 	}
 }
 
+const (
+	maxRetries    = 3
+	retryInterval = 10 * time.Second
+)
+
 func (c *CoinGeckoClient) GetCoinPrices(coinIDs []string) ([]CoinPrice, error) {
 	idsParam := strings.Join(coinIDs, ",")
-	url := fmt.Sprintf("%s/coins/markets?vs_currency=usd&ids=%s&order=market_cap_desc&per_page=100&page=1&sparkline=false", 
+	url := fmt.Sprintf("%s/coins/markets?vs_currency=usd&ids=%s&order=market_cap_desc&per_page=100&page=1&sparkline=false",
 		c.baseURL, idsParam)
-	
+
+	var lastErr error
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		coins, err := c.doRequest(url)
+		if err == nil {
+			return coins, nil
+		}
+		lastErr = err
+
+		if attempt < maxRetries {
+			fmt.Printf("请求失败 (尝试 %d/%d): %v，%v 后重试...\n", attempt, maxRetries, err, retryInterval)
+			time.Sleep(retryInterval)
+		}
+	}
+
+	return nil, fmt.Errorf("failed after %d attempts: %w", maxRetries, lastErr)
+}
+
+func (c *CoinGeckoClient) doRequest(url string) ([]CoinPrice, error) {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-	
+
 	req.Header.Set("x-cg-demo-api-key", c.apiKey)
-	
+
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch data from CoinGecko: %w", err)

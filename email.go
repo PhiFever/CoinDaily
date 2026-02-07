@@ -31,6 +31,15 @@ func NewEmailSender(config EmailConfig) *EmailSender {
 	}
 }
 
+// IsConfigured 检查邮件发送器是否已正确配置
+func (e *EmailSender) IsConfigured() bool {
+	return e.config.SMTPServer != "" &&
+		e.config.SMTPPort > 0 &&
+		e.config.Username != "" &&
+		e.config.Password != "" &&
+		len(e.config.To) > 0
+}
+
 // dialWithProxy 通过 HTTP 代理建立 TCP 连接（HTTP CONNECT 隧道）
 func (e *EmailSender) dialWithProxy(targetAddr string) (net.Conn, error) {
 	proxyURL, err := url.Parse(e.config.ProxyURL)

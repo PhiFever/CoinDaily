@@ -20,6 +20,12 @@ type Config struct {
 		To         []string `yaml:"to"`
 	} `yaml:"email"`
 
+	// Discord 配置（可选）
+	Discord struct {
+		BotToken  string `yaml:"bot_token"`
+		ChannelID string `yaml:"channel_id"`
+	} `yaml:"discord"`
+
 	Proxy struct {
 		Enabled bool   `yaml:"enabled"`
 		URL     string `yaml:"url"`
@@ -56,21 +62,41 @@ func validateConfig(config *Config) error {
 	if config.CoinGecko.APIKey == "" {
 		return fmt.Errorf("coingecko.api_key is required")
 	}
-	if config.Email.SMTPServer == "" {
-		return fmt.Errorf("email.smtp_server is required")
+
+	// 检查是否有至少一个通知渠道配置
+	hasEmail := isEmailConfigured(config)
+	hasDiscord := isDiscordConfigured(config)
+
+	if !hasEmail && !hasDiscord {
+		return fmt.Errorf("至少需要配置一个通知渠道 (email 或 discord)")
 	}
-	if config.Email.SMTPPort == 0 {
-		return fmt.Errorf("email.smtp_port is required")
+
+	// 如果配置了邮件，验证邮件配置完整性
+	if hasEmail {
+		if config.Email.SMTPPort == 0 {
+			return fmt.Errorf("email.smtp_port is required")
+		}
+		if config.Email.Username == "" {
+			return fmt.Errorf("email.username is required")
+		}
+		if config.Email.Password == "" {
+			return fmt.Errorf("email.password is required")
+		}
+		if len(config.Email.To) == 0 {
+			return fmt.Errorf("email.to is required (at least one recipient)")
+		}
 	}
-	if config.Email.Username == "" {
-		return fmt.Errorf("email.username is required")
+
+	// 如果配置了 Discord，验证 Discord 配置完整性
+	if config.Discord.BotToken != "" || config.Discord.ChannelID != "" {
+		if config.Discord.BotToken == "" {
+			return fmt.Errorf("discord.bot_token is required when discord is configured")
+		}
+		if config.Discord.ChannelID == "" {
+			return fmt.Errorf("discord.channel_id is required when discord is configured")
+		}
 	}
-	if config.Email.Password == "" {
-		return fmt.Errorf("email.password is required")
-	}
-	if len(config.Email.To) == 0 {
-		return fmt.Errorf("email.to is required (at least one recipient)")
-	}
+
 	if len(config.Coins) == 0 {
 		return fmt.Errorf("at least one coin must be specified")
 	}
@@ -82,4 +108,14 @@ func validateConfig(config *Config) error {
 	}
 
 	return nil
+}
+
+// isEmailConfigured 检查邮件配置是否存在
+func isEmailConfigured(config *Config) bool {
+	return config.Email.SMTPServer != ""
+}
+
+// isDiscordConfigured 检查 Discord 配置是否完整
+func isDiscordConfigured(config *Config) bool {
+	return config.Discord.BotToken != "" && config.Discord.ChannelID != ""
 }

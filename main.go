@@ -22,7 +22,19 @@ func main() {
 
 	log.Printf("配置加载成功，将跟踪 %d 个加密货币", len(config.Coins))
 	log.Printf("每日报表发送时间: %02d:%02d", config.Schedule.Hour, config.Schedule.Minute)
-	log.Printf("报表将发送至: %s", config.Email.To)
+
+	// 显示通知渠道状态
+	if isEmailConfigured(config) {
+		log.Printf("邮件通知已启用，收件人: %v", config.Email.To)
+	} else {
+		log.Println("邮件通知未配置")
+	}
+
+	if isDiscordConfigured(config) {
+		log.Printf("Discord 通知已启用，频道 ID: %s", config.Discord.ChannelID)
+	} else {
+		log.Println("Discord 通知未配置")
+	}
 
 	scheduler := NewScheduler(config)
 
