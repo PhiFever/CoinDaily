@@ -55,6 +55,22 @@ go build -o coindaily
 - polygon-token
 - chainlink
 
+### 如何查找正确的 API ID
+
+注意：CoinGecko 网站的 URL 和 API ID 不一定相同（例如 BNB 的网址是 `/coins/bnb`，但 API ID 是 `binancecoin`）。查找正确 ID 有两种方式：
+
+**方法一：查询完整币种列表**
+
+在浏览器访问以下地址（无需 API key），搜索币种名称或 symbol 即可找到对应的 `id`：
+
+```
+https://api.coingecko.com/api/v3/coins/list
+```
+
+**方法二：查看币种页面底部**
+
+在 CoinGecko 每个币种页面（从[此处](https://www.coingecko.com/en/all-cryptocurrencies)点击进入）滚动到底部，找到 "API ID" 字段，该值即为配置文件中应填写的 ID。
+
 完整列表请参考 [CoinGecko API 文档](https://docs.coingecko.com/v3.0.1/reference/endpoint-overview)
 
 ## Gmail 配置说明
