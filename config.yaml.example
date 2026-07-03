@@ -29,6 +29,8 @@ coins:
   - "cardano"
   - "polkadot"
   - "chainlink"
+  - "virtual-protocol"
+  - "near"
 
 # 定时发送时间
 schedule:
