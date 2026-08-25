@@ -44,7 +44,7 @@ func TestMarketReportRendersThreeSemanticSections(t *testing.T) {
 	}
 
 	embed := gen.GenerateMarketDiscordEmbed(report)
-	if embed.Title != "📈 市场行情报表" || len(embed.Fields) != 4 {
+	if embed.Title != "📈 市场行情报表" || len(embed.Fields) != 9 {
 		t.Fatalf("embed=%#v", embed)
 	}
 	serialized := embed.Title + embed.Description
@@ -54,6 +54,61 @@ func TestMarketReportRendersThreeSemanticSections(t *testing.T) {
 	for _, want := range []string{"Bitcoin", "QQQ", "xyz:ZHIPU", "资金动向", "延迟 SIP"} {
 		if !strings.Contains(serialized, want) {
 			t.Errorf("Discord embed missing %q", want)
+		}
+	}
+	for index, wants := range map[int][]string{
+		1: {"> CoinGecko 返回了部分数据"},
+		2: {"**$60000.00**", "🟢 **+1.20%**", "市值　", "成交　", "市值 Δ　", "<t:"},
+		4: {"**$500.00**", "🟢 **+2.50%**", "1h 成交　", "VWAP　", "方向　🔴 下跌", "· 延迟"},
+		6: {"**Mark $100.00**", "Oracle　", "溢折价　▲", "🟢 **+11.11%**", "<t:"},
+		7: {"资金费率　▲", "名义 OI　", "OI Δ　▲"},
+		8: {"**1h ", "24h　", "Candle　"},
+	} {
+		for _, want := range wants {
+			if !strings.Contains(embed.Fields[index].Value, want) {
+				t.Errorf("Discord field %d missing compact fragment %q:\n%s", index, want, embed.Fields[index].Value)
+			}
+		}
+	}
+	for _, index := range []int{0, 1, 3, 5} {
+		if embed.Fields[index].Inline {
+			t.Errorf("section/warning field %d should force a row break", index)
+		}
+	}
+	for _, index := range []int{2, 4, 6, 7, 8} {
+		if !embed.Fields[index].Inline {
+			t.Errorf("market card %d should render inline", index)
+		}
+	}
+}
+
+func TestDiscordEmbedUsesHorizontalAssetCards(t *testing.T) {
+	now := time.Now()
+	report := &MarketReport{
+		GeneratedAt: now,
+		Crypto: CryptoSection{Configured: true, Items: []CoinPrice{
+			{Name: "Bitcoin", Symbol: "btc", CurrentPrice: 1},
+			{Name: "Ethereum", Symbol: "eth", CurrentPrice: 1},
+			{Name: "Solana", Symbol: "sol", CurrentPrice: 1},
+		}},
+		Stocks: StockSection{Configured: true, Feed: "delayed_sip", Items: []StockPrice{
+			{Symbol: "QQQ", Price: 1, PriceTime: now},
+			{Symbol: "SPCX", Price: 1, PriceTime: now},
+		}},
+		Perpetuals: PerpetualSection{Configured: true, Items: []PerpetualPrice{{Symbol: "xyz:ZHIPU", MarkPrice: 1, ObservedAt: now}}},
+	}
+	embed := NewReportGenerator().GenerateMarketDiscordEmbed(report)
+	if len(embed.Fields) != 11 {
+		t.Fatalf("fields=%d, want 11", len(embed.Fields))
+	}
+	for _, index := range []int{0, 4, 7} {
+		if embed.Fields[index].Inline {
+			t.Errorf("section header %d should not be inline", index)
+		}
+	}
+	for _, index := range []int{1, 2, 3, 5, 6, 8, 9, 10} {
+		if !embed.Fields[index].Inline {
+			t.Errorf("asset/detail card %d should be inline", index)
 		}
 	}
 }

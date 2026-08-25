@@ -63,50 +63,91 @@ body{font-family:Arial,sans-serif;margin:20px;background:#f5f5f5;color:#2c3e50}.
 }
 
 func (r *ReportGenerator) GenerateMarketDiscordEmbed(report *MarketReport) *DiscordEmbed {
-	fields := make([]EmbedField, 0, len(report.Crypto.Items)+len(report.Stocks.Items)+len(report.Perpetuals.Items)+3)
+	fields := make([]EmbedField, 0, len(report.Crypto.Items)+len(report.Stocks.Items)+len(report.Perpetuals.Items)*3+6)
 	if report.Crypto.Configured {
+		fields = append(fields, discordSectionHeader("🪙 加密货币", fmt.Sprintf("CoinGecko · %d 个标的", len(report.Crypto.Items))))
 		if report.Crypto.Warning != "" {
 			fields = append(fields, warningField("加密货币", report.Crypto.Warning))
 		}
 		for _, coin := range report.Crypto.Items {
 			fields = append(fields, EmbedField{
-				Name: fmt.Sprintf("加密货币 · %s (%s)", coin.Name, strings.ToUpper(coin.Symbol)),
-				Value: fmt.Sprintf("**$%s** · 24h %s\n资金动向：成交量 $%s · 市值变化 %s\n更新：%s",
-					formatMarketNumber(coin.CurrentPrice), formatSignedPercent(coin.PriceChangePerc24h), formatMarketLarge(coin.Volume24h), formatOptionalSignedMoney(coin.MarketCapChange24h), formatSourceTime(coin.LastUpdated, report.GeneratedAt.Location())),
-				Inline: false,
+				Name: fmt.Sprintf("%s · %s", strings.ToUpper(coin.Symbol), coin.Name),
+				Value: discordCompactMetrics(
+					"**$"+formatMarketNumber(coin.CurrentPrice)+"**",
+					discordTrendPercent(floatPtr(coin.PriceChangePerc24h))+" · 24h",
+					discordStat("市值", "$"+formatMarketLarge(coin.MarketCap)),
+					discordStat("成交", "$"+formatMarketLarge(coin.Volume24h)),
+					discordStat("市值 Δ", discordTrendMoney(coin.MarketCapChange24h)),
+					"🕒 "+formatDiscordSourceTime(coin.LastUpdated),
+				),
+				Inline: true,
 			})
 		}
 	}
 	if report.Stocks.Configured {
+		fields = append(fields, discordSectionHeader("🇺🇸 美股 / ETF", fmt.Sprintf("Alpaca · 延迟 SIP · %d 个标的", len(report.Stocks.Items))))
 		if report.Stocks.Warning != "" {
 			fields = append(fields, warningField("美股 / ETF", report.Stocks.Warning))
 		}
 		for _, stock := range report.Stocks.Items {
 			fields = append(fields, EmbedField{
-				Name: fmt.Sprintf("美股 / ETF · %s", stock.Symbol),
-				Value: fmt.Sprintf("**$%s** · 相对前收 %s\n资金动向：完整1h成交额 %s · VWAP %s · %s\n延迟 SIP 行情：%s",
-					formatMarketNumber(stock.Price), formatOptionalPercent(stock.DailyChangePercent), formatOptionalMoney(stock.HourlyTurnover), formatOptionalPrice(stock.HourlyVWAP), formatDirection(stock.HourlyDirection)+" · bar "+formatOptionalTime(stock.HourlyBarStart, report.GeneratedAt.Location()), stock.PriceTime.In(report.GeneratedAt.Location()).Format("01-02 15:04:05 MST")),
-				Inline: false,
+				Name: stock.Symbol,
+				Value: discordCompactMetrics(
+					"**$"+formatMarketNumber(stock.Price)+"**",
+					discordTrendPercent(stock.DailyChangePercent)+" · 前收",
+					discordStat("1h 成交", formatOptionalMoney(stock.HourlyTurnover)),
+					discordStat("VWAP", formatOptionalPrice(stock.HourlyVWAP)),
+					discordStat("方向", discordDirection(stock.HourlyDirection)),
+					"🕒 "+formatDiscordTime(stock.PriceTime)+" · 延迟",
+					discordStat("Bar", formatDiscordOptionalTime(stock.HourlyBarStart)),
+				),
+				Inline: true,
 			})
 		}
 	}
 	if report.Perpetuals.Configured {
+		fields = append(fields, discordSectionHeader("♾️ Hyperliquid 永续", fmt.Sprintf("公开 Info API · %d 个合约", len(report.Perpetuals.Items))))
 		if report.Perpetuals.Warning != "" {
 			fields = append(fields, warningField("Hyperliquid 永续", report.Perpetuals.Warning))
 		}
 		for _, perp := range report.Perpetuals.Items {
-			fields = append(fields, EmbedField{
-				Name: fmt.Sprintf("Hyperliquid 永续 · %s", perp.Symbol),
-				Value: fmt.Sprintf("**Mark $%s** · Oracle %s · %s\n24h %s · 每小时资金费率 %s\n资金动向：名义 OI %s · %s · 完整1h成交额 %s\n观测：%s",
-					formatMarketNumber(perp.MarkPrice), formatOptionalPrice(perp.OraclePrice), formatSpread(perp.MarkOracleSpread, perp.MarkOracleSpreadPct), formatOptionalPercent(perp.PriceChange24hPct), formatFunding(perp.FundingRate), formatOptionalMoney(perp.NotionalOpenInterest), formatOIDelta(perp.OpenInterestChange), formatOptionalMoney(perp.HourlyTurnover)+" · 24h "+formatOptionalMoney(perp.DayTurnover)+" · bar "+formatOptionalTime(perp.HourlyCandleStart, report.GeneratedAt.Location()), perp.ObservedAt.In(report.GeneratedAt.Location()).Format("01-02 15:04:05 MST")),
-				Inline: false,
-			})
+			fields = append(fields,
+				EmbedField{
+					Name: "📈 " + perp.Symbol + " · 行情",
+					Value: discordCompactMetrics(
+						"**Mark $"+formatMarketNumber(perp.MarkPrice)+"**",
+						discordStat("Oracle", formatOptionalPrice(perp.OraclePrice)),
+						discordStat("溢折价", discordSpread(perp.MarkOracleSpread, perp.MarkOracleSpreadPct)),
+						discordTrendPercent(perp.PriceChange24hPct)+" · 24h",
+						"🕒 "+formatDiscordTime(perp.ObservedAt),
+					),
+					Inline: true,
+				},
+				EmbedField{
+					Name: "💰 持仓 / 资金",
+					Value: discordCompactMetrics(
+						discordStat("资金费率", discordFunding(perp.FundingRate)),
+						discordStat("名义 OI", formatOptionalMoney(perp.NotionalOpenInterest)),
+						discordStat("OI Δ", discordOIDelta(perp.OpenInterestChange)),
+					),
+					Inline: true,
+				},
+				EmbedField{
+					Name: "🔥 成交活跃度",
+					Value: discordCompactMetrics(
+						"**1h "+formatOptionalMoney(perp.HourlyTurnover)+"**",
+						discordStat("24h", formatOptionalMoney(perp.DayTurnover)),
+						discordStat("Candle", formatDiscordOptionalTime(perp.HourlyCandleStart)),
+					),
+					Inline: true,
+				},
+			)
 		}
 	}
 
 	embed := &DiscordEmbed{
 		Title:       "📈 市场行情报表",
-		Description: report.GeneratedAt.Format("2006年01月02日 15:04 MST") + "\n资金动向为成交/市值/持仓代理指标。",
+		Description: formatDiscordTime(report.GeneratedAt) + "  ·  *资金动向为成交 / 市值 / 持仓代理指标*",
 		Color:       marketReportColor(report),
 		Fields:      fields,
 		Footer:      &EmbedFooter{Text: strings.Join(configuredSourceNames(report), " · ") + " | CoinDaily"},
@@ -122,7 +163,109 @@ func writeHTMLWarning(body *strings.Builder, warning string) {
 }
 
 func warningField(section, warning string) EmbedField {
-	return EmbedField{Name: "⚠ " + section + "数据警告", Value: warning, Inline: false}
+	return EmbedField{Name: "⚠ " + section + "数据警告", Value: "> " + warning, Inline: false}
+}
+
+func discordSectionHeader(title, source string) EmbedField {
+	return EmbedField{Name: title, Value: "*" + source + "*", Inline: false}
+}
+
+func discordCompactMetrics(metrics ...string) string {
+	return strings.Join(metrics, "\n")
+}
+
+func discordStat(label, value string) string {
+	return label + "　" + value
+}
+
+func discordTrendPercent(value *float64) string {
+	if value == nil {
+		return "⚪ **N/A**"
+	}
+	return trendMarker(*value) + " **" + formatSignedPercent(*value) + "**"
+}
+
+func discordTrendMoney(value *float64) string {
+	if value == nil {
+		return "⚪ N/A"
+	}
+	return trendMarker(*value) + " " + formatSignedMoney(*value)
+}
+
+func discordDirection(value *float64) string {
+	if value == nil {
+		return "⚪ N/A"
+	}
+	if *value > 0 {
+		return "🟢 上涨"
+	}
+	if *value < 0 {
+		return "🔴 下跌"
+	}
+	return "⚪ 持平"
+}
+
+func discordSpread(absolute, percent *float64) string {
+	if absolute == nil || percent == nil {
+		return "⚪ N/A"
+	}
+	return directionMarker(*percent) + " " + formatSpread(absolute, percent)
+}
+
+func discordFunding(value *float64) string {
+	if value == nil {
+		return "⚪ N/A"
+	}
+	return directionMarker(*value) + " " + formatFunding(value)
+}
+
+func discordOIDelta(value *float64) string {
+	if value == nil {
+		return "⚪ N/A"
+	}
+	return directionMarker(*value) + " " + formatOIDelta(value)
+}
+
+func trendMarker(value float64) string {
+	if value > 0 {
+		return "🟢"
+	}
+	if value < 0 {
+		return "🔴"
+	}
+	return "⚪"
+}
+
+func directionMarker(value float64) string {
+	if value > 0 {
+		return "▲"
+	}
+	if value < 0 {
+		return "▼"
+	}
+	return "•"
+}
+
+func formatDiscordSourceTime(raw string) string {
+	parsed, err := time.Parse(time.RFC3339Nano, raw)
+	if err != nil {
+		return "N/A"
+	}
+	return formatDiscordTime(parsed)
+}
+
+func formatDiscordOptionalTime(value *time.Time) string {
+	if value == nil {
+		return "N/A"
+	}
+	return formatDiscordTime(*value)
+}
+
+func formatDiscordTime(value time.Time) string {
+	if value.IsZero() {
+		return "N/A"
+	}
+	return fmt.Sprintf("<t:%d:R>", value.Unix())
 }
 
 func formatMarketNumber(value float64) string {
