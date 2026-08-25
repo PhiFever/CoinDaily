@@ -99,6 +99,15 @@ https://api.coingecko.com/api/v3/coins/list
 
 股票代码配置在顶层 `stocks` 列表。当前实现固定采用 `alpaca.feed: delayed_sip`：程序通过 Alpaca 历史 REST API 请求截止到至少 15 分钟前的 SIP 综合数据，因此报告不是实时、也不是可成交报价。
 
+### 获取 Alpaca Paper API 密钥
+
+1. 登录后直接打开 [Alpaca Dashboard](https://app.alpaca.markets/dashboard/overview)。当前 Dashboard 地址没有 `/paper` 或 `/brokerage` 前缀。
+2. 使用左上角的账户选择器进入 **Paper Trading** 账户。
+3. 在 Dashboard 的 **API Keys** 区域生成 Key 和 Secret；Secret 只在生成时完整显示一次。
+4. 将凭据分别填入本地 `config.yaml` 的 `alpaca.api_key` 和 `alpaca.secret_key`，不要提交真实密钥。
+
+`https://app.alpaca.markets/brokerage/new-account` 是实盘证券账户开户及 KYC 流程，不是 Paper API 密钥入口。Alpaca 的 [Paper Trading 官方文档](https://docs.alpaca.markets/docs/paper-trading)说明 Paper 与 Live 使用不同的 API 密钥；本程序只读取行情，不会向 Paper 或 Live Trading API 提交订单。
+
 股票区块显示：
 
 - 最近有效的延迟 SIP 价格及其时间戳
