@@ -13,15 +13,15 @@ func main() {
 	once := flag.Bool("once", false, "只运行一次，不启动定时任务")
 	flag.Parse()
 
-	log.Println("CoinDaily - 每日加密货币价格报表工具启动中...")
+	log.Println("CoinDaily - 市场行情报表工具启动中...")
 
 	config, err := LoadConfig(*configPath)
 	if err != nil {
 		log.Fatalf("加载配置文件失败: %v", err)
 	}
 
-	log.Printf("配置加载成功，将跟踪 %d 个加密货币", len(config.Coins))
-	log.Printf("每日报表发送时间: %02d:%02d", config.Schedule.Hour, config.Schedule.Minute)
+	log.Printf("配置加载成功：加密货币 %d，美股/ETF %d，永续合约 %d", len(config.Coins), len(config.Stocks), len(config.Hyperliquid.Perpetuals))
+	log.Printf("报表发送时间: %02d:%02d", config.Schedule.Hour, config.Schedule.Minute)
 
 	// 显示通知渠道状态
 	if isEmailConfigured(config) {

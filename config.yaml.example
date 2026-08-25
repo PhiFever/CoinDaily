@@ -2,6 +2,18 @@
 coingecko:
   api_key: "your_coingecko_api_key_here"
 
+# Alpaca 美股行情配置（仅在 stocks 非空时必填）
+# delayed_sip 表示报告使用至少延迟 15 分钟的 SIP 综合行情。
+alpaca:
+  api_key: "your_alpaca_api_key_here"
+  secret_key: "your_alpaca_secret_key_here"
+  feed: "delayed_sip"
+
+# Hyperliquid 使用公开 Info API，不需要钱包、私钥或 API key。
+hyperliquid:
+  perpetuals:
+    - "xyz:ZHIPU"
+
 # 邮件配置（可选，如果配置了 Discord 则非必需）
 email:
   smtp_server: "smtp.gmail.com"
@@ -31,6 +43,11 @@ coins:
   - "chainlink"
   - "virtual-protocol"
   - "near"
+
+# 要跟踪的美国上市股票或 ETF 代码
+stocks:
+  - "QQQ"
+  - "SPCX"
 
 # 定时发送时间
 schedule:

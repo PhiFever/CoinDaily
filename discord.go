@@ -207,6 +207,14 @@ func (d *DiscordSender) SendReport(coins []CoinPrice) error {
 	return d.SendEmbed(embed)
 }
 
+func (d *DiscordSender) SendMarketReport(report *MarketReport) error {
+	if !d.IsConfigured() {
+		return nil
+	}
+	embed := NewReportGenerator().GenerateMarketDiscordEmbed(report)
+	return d.SendEmbed(embed)
+}
+
 // Discord Embed 字符限制
 const (
 	maxEmbedTotalLength = 6000
@@ -214,35 +222,32 @@ const (
 	maxFieldNameLength  = 256
 	maxTitleLength      = 256
 	maxDescLength       = 4096
+	maxEmbedFields      = 25
 )
 
 // truncateEmbedIfNeeded 如果 Embed 超过长度限制，进行截断
 func truncateEmbedIfNeeded(embed *DiscordEmbed) *DiscordEmbed {
 	// 截断标题
-	if len(embed.Title) > maxTitleLength {
-		embed.Title = embed.Title[:maxTitleLength-3] + "..."
-	}
+	embed.Title = truncateText(embed.Title, maxTitleLength)
 
 	// 截断描述
-	if len(embed.Description) > maxDescLength {
-		embed.Description = embed.Description[:maxDescLength-3] + "..."
+	embed.Description = truncateText(embed.Description, maxDescLength)
+	if len(embed.Fields) > maxEmbedFields {
+		embed.Fields = embed.Fields[:maxEmbedFields]
+		embed.Fields[maxEmbedFields-1].Value = appendTruncationNote(embed.Fields[maxEmbedFields-1].Value, "\n... (更多标的已省略)", maxFieldValueLength)
 	}
 
 	// 截断字段
 	for i := range embed.Fields {
-		if len(embed.Fields[i].Name) > maxFieldNameLength {
-			embed.Fields[i].Name = embed.Fields[i].Name[:maxFieldNameLength-3] + "..."
-		}
-		if len(embed.Fields[i].Value) > maxFieldValueLength {
-			embed.Fields[i].Value = embed.Fields[i].Value[:maxFieldValueLength-3] + "..."
-		}
+		embed.Fields[i].Name = truncateText(embed.Fields[i].Name, maxFieldNameLength)
+		embed.Fields[i].Value = truncateText(embed.Fields[i].Value, maxFieldValueLength)
 	}
 
 	// 如果总长度仍然超过限制，移除一些字段
 	for calculateEmbedLength(embed) > maxEmbedTotalLength && len(embed.Fields) > 0 {
 		embed.Fields = embed.Fields[:len(embed.Fields)-1]
 		if len(embed.Fields) > 0 {
-			embed.Fields[len(embed.Fields)-1].Value += "\n... (更多币种已省略)"
+			embed.Fields[len(embed.Fields)-1].Value = appendTruncationNote(embed.Fields[len(embed.Fields)-1].Value, "\n... (更多标的已省略)", maxFieldValueLength)
 		}
 	}
 
@@ -251,12 +256,35 @@ func truncateEmbedIfNeeded(embed *DiscordEmbed) *DiscordEmbed {
 
 // calculateEmbedLength 计算 Embed 的总字符数
 func calculateEmbedLength(embed *DiscordEmbed) int {
-	length := len(embed.Title) + len(embed.Description)
+	length := textLength(embed.Title) + textLength(embed.Description)
 	for _, field := range embed.Fields {
-		length += len(field.Name) + len(field.Value)
+		length += textLength(field.Name) + textLength(field.Value)
 	}
 	if embed.Footer != nil {
-		length += len(embed.Footer.Text)
+		length += textLength(embed.Footer.Text)
 	}
 	return length
 }
+
+func truncateText(value string, maximum int) string {
+	runes := []rune(value)
+	if len(runes) <= maximum {
+		return value
+	}
+	return string(runes[:maximum-3]) + "..."
+}
+
+func appendTruncationNote(value, note string, maximum int) string {
+	noteRunes := []rune(note)
+	if len(noteRunes) >= maximum {
+		return truncateText(note, maximum)
+	}
+	valueRunes := []rune(value)
+	available := maximum - len(noteRunes)
+	if len(valueRunes) > available {
+		valueRunes = valueRunes[:available]
+	}
+	return string(valueRunes) + note
+}
+
+func textLength(value string) int { return len([]rune(value)) }

@@ -15,7 +15,7 @@ func NewReportGenerator() *ReportGenerator {
 func (r *ReportGenerator) GenerateHTMLReport(coins []CoinPrice) string {
 	now := time.Now()
 	dateStr := now.Format("2006年01月02日")
-	
+
 	html := fmt.Sprintf(`
 <!DOCTYPE html>
 <html>
@@ -114,7 +114,7 @@ func (r *ReportGenerator) GenerateHTMLReport(coins []CoinPrice) string {
 			changeClass = "negative"
 			changeSymbol = ""
 		}
-		
+
 		percChangeClass := "positive"
 		percChangeSymbol := "+"
 		if coin.PriceChangePerc24h < 0 {

@@ -3,7 +3,9 @@ package main
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 // TestNewDiscordSender 测试 DiscordSender 客户端创建（带代理配置）
@@ -132,5 +134,27 @@ func TestDiscordSenderSendEmbedForbidden(t *testing.T) {
 	err := sender.SendEmbed(embed)
 	if err == nil {
 		t.Error("权限不足时应该返回错误")
+	}
+}
+
+func TestTruncateEmbedPreservesUTF8AndDiscordLimits(t *testing.T) {
+	embed := &DiscordEmbed{Title: strings.Repeat("市", 300), Description: strings.Repeat("场", 4200)}
+	for index := 0; index < 30; index++ {
+		embed.Fields = append(embed.Fields, EmbedField{Name: strings.Repeat("合", 300), Value: strings.Repeat("约", 1100)})
+	}
+	truncateEmbedIfNeeded(embed)
+	if !utf8.ValidString(embed.Title) || !utf8.ValidString(embed.Description) {
+		t.Fatal("truncation produced invalid UTF-8")
+	}
+	if textLength(embed.Title) > maxTitleLength || textLength(embed.Description) > maxDescLength || len(embed.Fields) > maxEmbedFields {
+		t.Fatalf("embed limits exceeded: title=%d desc=%d fields=%d", textLength(embed.Title), textLength(embed.Description), len(embed.Fields))
+	}
+	for _, field := range embed.Fields {
+		if !utf8.ValidString(field.Name) || !utf8.ValidString(field.Value) || textLength(field.Name) > maxFieldNameLength || textLength(field.Value) > maxFieldValueLength {
+			t.Fatal("field truncation exceeded limits or broke UTF-8")
+		}
+	}
+	if calculateEmbedLength(embed) > maxEmbedTotalLength {
+		t.Fatalf("total embed length = %d", calculateEmbedLength(embed))
 	}
 }

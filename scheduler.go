@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"time"
 )
@@ -9,6 +8,9 @@ import (
 type Scheduler struct {
 	config        *Config
 	coinClient    *CoinGeckoClient
+	stockClient   *AlpacaClient
+	perpClient    *HyperliquidClient
+	stateStore    *StateStore
 	emailSender   *EmailSender
 	discordSender *DiscordSender
 	reportGen     *ReportGenerator
@@ -17,10 +19,19 @@ type Scheduler struct {
 
 func NewScheduler(config *Config) *Scheduler {
 	scheduler := &Scheduler{
-		config:     config,
-		coinClient: NewCoinGeckoClient(config.CoinGecko.APIKey, config.Proxy.Enabled, config.Proxy.URL),
-		reportGen:  NewReportGenerator(),
-		stopChan:   make(chan bool),
+		config:    config,
+		reportGen: NewReportGenerator(),
+		stopChan:  make(chan bool),
+	}
+	if len(config.Coins) > 0 {
+		scheduler.coinClient = NewCoinGeckoClient(config.CoinGecko.APIKey, config.Proxy.Enabled, config.Proxy.URL)
+	}
+	if len(config.Stocks) > 0 {
+		scheduler.stockClient = NewAlpacaClient(config.Alpaca.APIKey, config.Alpaca.SecretKey, config.Alpaca.Feed, config.Proxy.Enabled, config.Proxy.URL)
+	}
+	if len(config.Hyperliquid.Perpetuals) > 0 {
+		scheduler.perpClient = NewHyperliquidClient(config.Proxy.Enabled, config.Proxy.URL)
+		scheduler.stateStore = NewStateStore(config.statePath())
 	}
 
 	// 如果配置了邮件，初始化邮件发送器
@@ -82,69 +93,38 @@ func (s *Scheduler) runOnceNow() {
 }
 
 func (s *Scheduler) runDailyReport() {
-	log.Println("开始生成每日加密货币价格报表...")
-
-	coins, err := s.coinClient.GetCoinPrices(s.config.Coins)
-	if err != nil {
-		log.Printf("获取加密货币价格失败: %v", err)
-		return
+	log.Println("开始生成市场行情报表...")
+	runner := &ReportRunner{
+		CoinIDs:          s.config.Coins,
+		StockSymbols:     s.config.Stocks,
+		PerpetualSymbols: s.config.Hyperliquid.Perpetuals,
+		StockFeed:        s.config.Alpaca.Feed,
+		StateStore:       s.stateStore,
+		ReportGenerator:  s.reportGen,
 	}
-
-	if len(coins) == 0 {
-		log.Println("未获取到任何加密货币数据")
-		return
+	if s.coinClient != nil {
+		runner.CryptoCollector = s.coinClient
 	}
-
-	log.Printf("成功获取到 %d 个加密货币的价格数据", len(coins))
-
-	// 记录发送结果
-	emailSuccess := false
-	discordSuccess := false
-
-	// 发送邮件报表（如果配置了邮件）
+	if s.stockClient != nil {
+		runner.StockCollector = s.stockClient
+	}
+	if s.perpClient != nil {
+		runner.PerpCollector = s.perpClient
+	}
 	if s.emailSender != nil && s.emailSender.IsConfigured() {
-		htmlReport := s.reportGen.GenerateHTMLReport(coins)
-		subject := fmt.Sprintf("每日加密货币价格报表 - %s", time.Now().Format("2006年01月02日"))
-
-		err = s.emailSender.SendReport(subject, htmlReport)
-		if err != nil {
-			log.Printf("发送邮件失败: %v", err)
-		} else {
-			log.Println("每日报表已成功发送到邮箱")
-			emailSuccess = true
-		}
+		runner.EmailSender = s.emailSender
 	}
-
-	// 发送 Discord 报表（如果配置了 Discord）
 	if s.discordSender != nil && s.discordSender.IsConfigured() {
-		err = s.discordSender.SendReport(coins)
-		if err != nil {
-			log.Printf("发送 Discord 消息失败: %v", err)
-		} else {
-			log.Println("每日报表已成功发送到 Discord")
-			discordSuccess = true
-		}
+		runner.DiscordSender = s.discordSender
 	}
 
-	// 检查是否有任何通知渠道配置
-	hasEmail := s.emailSender != nil && s.emailSender.IsConfigured()
-	hasDiscord := s.discordSender != nil && s.discordSender.IsConfigured()
-
-	if !hasEmail && !hasDiscord {
-		log.Println("警告: 没有配置任何通知渠道（邮件或 Discord）")
+	report, err := runner.Run()
+	if err != nil {
+		log.Printf("市场行情报表执行存在错误: %v", err)
+	}
+	if report == nil || !report.HasData() {
+		log.Println("所有已配置行情源均无可用数据，未发送通知")
 		return
 	}
-
-	// 汇总发送结果
-	if hasEmail && hasDiscord {
-		if emailSuccess && discordSuccess {
-			log.Println("所有通知渠道发送成功")
-		} else if emailSuccess {
-			log.Println("邮件发送成功，Discord 发送失败")
-		} else if discordSuccess {
-			log.Println("Discord 发送成功，邮件发送失败")
-		} else {
-			log.Println("所有通知渠道发送失败")
-		}
-	}
+	log.Printf("市场行情报表完成：加密货币 %d，美股/ETF %d，永续合约 %d", len(report.Crypto.Items), len(report.Stocks.Items), len(report.Perpetuals.Items))
 }

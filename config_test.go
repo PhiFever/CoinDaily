@@ -209,6 +209,95 @@ schedule:
 	}
 }
 
+func TestConfigLegacyDefaultsAlpacaFeed(t *testing.T) {
+	config, err := LoadConfig(createTempConfigFile(t, baseConfigWithEmail()))
+	if err != nil {
+		t.Fatalf("旧配置应保持有效: %v", err)
+	}
+	if config.Alpaca.Feed != "delayed_sip" {
+		t.Fatalf("默认 feed = %q，期望 delayed_sip", config.Alpaca.Feed)
+	}
+}
+
+func TestConfigAlpacaConditionalCredentials(t *testing.T) {
+	valid := baseConfigWithEmail() + `
+alpaca:
+  api_key: "alpaca-key"
+  secret_key: "alpaca-secret"
+  feed: "delayed_sip"
+stocks:
+  - QQQ
+  - SPCX
+`
+	config, err := LoadConfig(createTempConfigFile(t, valid))
+	if err != nil {
+		t.Fatalf("有效 Alpaca 配置加载失败: %v", err)
+	}
+	if len(config.Stocks) != 2 {
+		t.Fatalf("stocks 数量 = %d，期望 2", len(config.Stocks))
+	}
+
+	missingSecret := baseConfigWithEmail() + `
+alpaca:
+  api_key: "alpaca-key"
+stocks:
+  - QQQ
+`
+	if _, err := LoadConfig(createTempConfigFile(t, missingSecret)); err == nil {
+		t.Fatal("配置股票但缺少 Alpaca secret_key 应失败")
+	}
+}
+
+func TestConfigRejectsUnsupportedAlpacaFeed(t *testing.T) {
+	content := baseConfigWithEmail() + `
+alpaca:
+  api_key: "alpaca-key"
+  secret_key: "alpaca-secret"
+  feed: "sip"
+stocks:
+  - QQQ
+`
+	if _, err := LoadConfig(createTempConfigFile(t, content)); err == nil {
+		t.Fatal("非 delayed_sip feed 应失败")
+	}
+}
+
+func TestConfigAllowsHyperliquidOnlyMarket(t *testing.T) {
+	content := `
+email:
+  smtp_server: "smtp.test.com"
+  smtp_port: 587
+  username: "test@test.com"
+  password: "test-password"
+  to: ["recipient@test.com"]
+hyperliquid:
+  perpetuals:
+    - "xyz:ZHIPU"
+schedule:
+  hour: 0
+  minute: 0
+`
+	configPath := createTempConfigFile(t, content)
+	config, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatalf("仅启用 Hyperliquid 应有效: %v", err)
+	}
+	if got, want := config.statePath(), filepath.Join(filepath.Dir(configPath), ".coindaily-state.json"); got != want {
+		t.Fatalf("statePath = %q，期望 %q", got, want)
+	}
+}
+
+func TestConfigRejectsPerpetualWithoutDEXPrefix(t *testing.T) {
+	content := baseConfigWithEmail() + `
+hyperliquid:
+  perpetuals:
+    - "ZHIPU"
+`
+	if _, err := LoadConfig(createTempConfigFile(t, content)); err == nil {
+		t.Fatal("永续合约缺少 DEX 前缀应失败")
+	}
+}
+
 // containsSubstring 检查字符串是否包含子串
 func containsSubstring(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > 0 && (s[:len(substr)] == substr || containsSubstring(s[1:], substr)))

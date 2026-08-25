@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"gopkg.in/yaml.v2"
 )
@@ -11,6 +13,16 @@ type Config struct {
 	CoinGecko struct {
 		APIKey string `yaml:"api_key"`
 	} `yaml:"coingecko"`
+
+	Alpaca struct {
+		APIKey    string `yaml:"api_key"`
+		SecretKey string `yaml:"secret_key"`
+		Feed      string `yaml:"feed"`
+	} `yaml:"alpaca"`
+
+	Hyperliquid struct {
+		Perpetuals []string `yaml:"perpetuals"`
+	} `yaml:"hyperliquid"`
 
 	Email struct {
 		SMTPServer string   `yaml:"smtp_server"`
@@ -31,12 +43,15 @@ type Config struct {
 		URL     string `yaml:"url"`
 	} `yaml:"proxy"`
 
-	Coins []string `yaml:"coins"`
+	Coins  []string `yaml:"coins"`
+	Stocks []string `yaml:"stocks"`
 
 	Schedule struct {
 		Hour   int `yaml:"hour"`
 		Minute int `yaml:"minute"`
 	} `yaml:"schedule"`
+
+	configPath string
 }
 
 func LoadConfig(configPath string) (*Config, error) {
@@ -55,12 +70,39 @@ func LoadConfig(configPath string) (*Config, error) {
 		return nil, fmt.Errorf("invalid config: %w", err)
 	}
 
+	absPath, err := filepath.Abs(configPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve config file path: %w", err)
+	}
+	config.configPath = absPath
+
 	return &config, nil
 }
 
 func validateConfig(config *Config) error {
-	if config.CoinGecko.APIKey == "" {
+	if len(config.Coins) > 0 && strings.TrimSpace(config.CoinGecko.APIKey) == "" {
 		return fmt.Errorf("coingecko.api_key is required")
+	}
+
+	if config.Alpaca.Feed == "" {
+		config.Alpaca.Feed = "delayed_sip"
+	}
+	if config.Alpaca.Feed != "delayed_sip" {
+		return fmt.Errorf("alpaca.feed must be delayed_sip")
+	}
+	if len(config.Stocks) > 0 {
+		if strings.TrimSpace(config.Alpaca.APIKey) == "" {
+			return fmt.Errorf("alpaca.api_key is required when stocks are configured")
+		}
+		if strings.TrimSpace(config.Alpaca.SecretKey) == "" {
+			return fmt.Errorf("alpaca.secret_key is required when stocks are configured")
+		}
+	}
+	for _, symbol := range config.Hyperliquid.Perpetuals {
+		parts := strings.Split(symbol, ":")
+		if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" || strings.TrimSpace(parts[1]) == "" {
+			return fmt.Errorf("hyperliquid perpetual %q must include a DEX prefix such as xyz:ZHIPU", symbol)
+		}
 	}
 
 	// 检查是否有至少一个通知渠道配置
@@ -97,8 +139,8 @@ func validateConfig(config *Config) error {
 		}
 	}
 
-	if len(config.Coins) == 0 {
-		return fmt.Errorf("at least one coin must be specified")
+	if len(config.Coins) == 0 && len(config.Stocks) == 0 && len(config.Hyperliquid.Perpetuals) == 0 {
+		return fmt.Errorf("at least one coin, stock, or perpetual must be specified")
 	}
 	if config.Schedule.Hour < 0 || config.Schedule.Hour > 23 {
 		return fmt.Errorf("schedule.hour must be between 0 and 23")
@@ -108,6 +150,14 @@ func validateConfig(config *Config) error {
 	}
 
 	return nil
+}
+
+func (c *Config) statePath() string {
+	dir := "."
+	if c.configPath != "" {
+		dir = filepath.Dir(c.configPath)
+	}
+	return filepath.Join(dir, ".coindaily-state.json")
 }
 
 // isEmailConfigured 检查邮件配置是否存在
