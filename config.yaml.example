@@ -2,7 +2,7 @@
 coingecko:
   api_key: "your_coingecko_api_key_here"
 
-# Alpaca 美股行情配置（仅在 stocks 非空时必填）
+# Alpaca 美股行情配置（配置 stocks 或 canary.etfs 时必填）
 # delayed_sip 表示报告使用至少延迟 15 分钟的 SIP 综合行情。
 alpaca:
   api_key: "your_alpaca_api_key_here"
@@ -14,7 +14,18 @@ hyperliquid:
   perpetuals:
     - "xyz:ZHIPU"
 
-# FRED 资金面（配置序列时需要 API key）
+# 流动性金丝雀
+canary:
+  stablecoins:
+    - "tether"
+    - "usd-coin"
+  etfs:
+    - "TLT"
+    - "GLD"
+    - "UUP"
+    - "HYG"
+
+# FRED 序列（配置序列时需要 API key）
 fred:
   api_key: "your_fred_api_key_here"
   series:
@@ -52,17 +63,11 @@ coins:
   - "chainlink"
   - "virtual-protocol"
   - "near"
-  - "tether"
-  - "usd-coin"
 
 # 要跟踪的美国上市股票或 ETF 代码
 stocks:
   - "QQQ"
   - "SPCX"
-  - "TLT"
-  - "GLD"
-  - "UUP"
-  - "HYG"
 
 # 定时发送时间
 schedule:

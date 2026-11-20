@@ -194,8 +194,8 @@ func TestFredSpreadUsesLatestCommonDate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	spread := report.Fred.Spread
-	if spread == nil || spread.Date.Format(time.DateOnly) != "2026-11-18" || math.Abs(spread.Value-3) > 1e-8 {
+	spread := report.Canary.Items[len(report.Canary.Items)-1].Points
+	if len(spread) != 2 || math.Abs(spread[0].Value+8) > 1e-8 || spread[1].Date.Format(time.DateOnly) != "2026-11-18" || math.Abs(spread[1].Value-3) > 1e-8 {
 		t.Fatalf("spread = %+v", spread)
 	}
 }

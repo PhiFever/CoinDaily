@@ -56,11 +56,11 @@ func (c *AlpacaClient) GetStockPrices(symbols []string, now time.Time) ([]StockP
 
 	requested := normalizedSymbols(symbols)
 	cutoff := now.UTC().Add(-alpacaDelayedSIPLag)
-	minuteBars, err := c.getBars(requested, "1Min", cutoff.Add(-10*24*time.Hour), cutoff, 10000)
+	minuteBars, err := c.getBars(requested, "1Min", "raw", cutoff.Add(-10*24*time.Hour), cutoff, 10000)
 	if err != nil {
 		return nil, fmt.Errorf("Alpaca delayed observations: %w", err)
 	}
-	dailyBars, dailyErr := c.getBars(requested, "1Day", cutoff.Add(-20*24*time.Hour), cutoff, 1000)
+	dailyBars, dailyErr := c.getBars(requested, "1Day", "raw", cutoff.Add(-20*24*time.Hour), cutoff, 1000)
 
 	prices := make([]StockPrice, 0, len(requested))
 	var issues []error
@@ -89,7 +89,7 @@ func (c *AlpacaClient) GetStockPrices(symbols []string, now time.Time) ([]StockP
 		return nil, errors.Join(issues...)
 	}
 
-	bars, barErr := c.getBars(requested, "1Hour", cutoff.Add(-10*24*time.Hour), cutoff, 1000)
+	bars, barErr := c.getBars(requested, "1Hour", "raw", cutoff.Add(-10*24*time.Hour), cutoff, 1000)
 	if barErr != nil {
 		issues = append(issues, fmt.Errorf("Alpaca hourly bars: %w", barErr))
 	} else {
@@ -112,7 +112,32 @@ func (c *AlpacaClient) GetStockPrices(symbols []string, now time.Time) ([]StockP
 	return prices, errors.Join(issues...)
 }
 
-func (c *AlpacaClient) getBars(symbols []string, timeframe string, start, end time.Time, limit int) (map[string][]alpacaBar, error) {
+func (c *AlpacaClient) GetDailyCloses(symbols []string, now time.Time) ([]CanarySeries, error) {
+	requested := normalizedSymbols(symbols)
+	cutoff := now.UTC().Add(-alpacaDelayedSIPLag)
+	bars, err := c.getBars(requested, "1Day", "all", cutoff.AddDate(0, 0, -45), cutoff, 1000)
+	if err != nil {
+		return nil, err
+	}
+	var items []CanarySeries
+	var issues []error
+	for _, symbol := range requested {
+		var samples []CanaryPoint
+		for _, bar := range bars[symbol] {
+			if !bar.Timestamp.IsZero() && !bar.Timestamp.After(cutoff) && bar.Close > 0 && isFinite(bar.Close) {
+				samples = append(samples, CanaryPoint{Date: bar.Timestamp, Value: bar.Close})
+			}
+		}
+		if len(samples) == 0 {
+			issues = append(issues, fmt.Errorf("%s has no daily closes", symbol))
+			continue
+		}
+		items = append(items, marketCanary(etfGroup, symbol, samples))
+	}
+	return items, errors.Join(issues...)
+}
+
+func (c *AlpacaClient) getBars(symbols []string, timeframe, adjustment string, start, end time.Time, limit int) (map[string][]alpacaBar, error) {
 	query := url.Values{}
 	query.Set("symbols", strings.Join(symbols, ","))
 	query.Set("timeframe", timeframe)
@@ -121,7 +146,7 @@ func (c *AlpacaClient) getBars(symbols []string, timeframe string, start, end ti
 	// delayed_sip is a streaming feed name. Historical REST uses SIP with an
 	// end time at least 15 minutes old for delayed consolidated observations.
 	query.Set("feed", "sip")
-	query.Set("adjustment", "raw")
+	query.Set("adjustment", adjustment)
 	query.Set("limit", strconv.Itoa(limit))
 
 	result := make(map[string][]alpacaBar)

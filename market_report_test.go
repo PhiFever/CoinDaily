@@ -126,26 +126,33 @@ func TestMarketReportRendersUnavailableValuesAsNA(t *testing.T) {
 	}
 }
 
-func TestFredReportRendering(t *testing.T) {
-	date := time.Date(2026, 11, 18, 0, 0, 0, 0, time.UTC)
-	report := &MarketReport{GeneratedAt: date, Fred: FredSection{
-		Configured: true,
-		Items:      []FredSeries{{ID: "SOFR", Observations: []FredObservation{{Date: date, Value: 3.12}, {Date: date.AddDate(0, 0, -1), Value: 3.10}}}},
-		Spread:     &FredObservation{Date: date, Value: 3},
-	}}
-	generator := NewReportGenerator()
-	html := generator.GenerateMarketHTML(report)
-	for _, want := range []string{"资金面（FRED）", "SOFR (%)", "2026-11-18", "+0.02", "SOFR − IORB", "+3 bp"} {
-		if !strings.Contains(html, want) {
-			t.Errorf("HTML missing %q", want)
+func TestCanaryReportRendering(t *testing.T) {
+	report := largeDiscordReport()
+	report.Crypto = CryptoSection{}
+	report.Stocks = StockSection{}
+	report.Perpetuals = PerpetualSection{}
+	gen := NewReportGenerator()
+	html := gen.GenerateMarketHTML(report)
+	embed := gen.GenerateMarketDiscordEmbeds(report)[0]
+	var fields strings.Builder
+	for _, field := range embed.Fields {
+		if field.Inline {
+			t.Errorf("unexpected inline field %q", field.Name)
+		}
+		fields.WriteString(field.Name + " " + field.Value + "\n")
+	}
+	for _, output := range []string{html, fields.String()} {
+		for _, want := range []string{"流动性金丝雀", "USDT 供应", "TLT 长债", "SOFR (%)", "SOFR − IORB", "7d", "30d", "▁█", "+2 bp", "11-18"} {
+			if !strings.Contains(output, want) {
+				t.Errorf("missing %q", want)
+			}
+		}
+		if strings.Contains(output, "资金面") {
+			t.Error("obsolete FRED section")
 		}
 	}
-	embed := generator.GenerateMarketDiscordEmbeds(report)[0]
-	if embed.Footer == nil || !strings.Contains(embed.Footer.Text, "FRED") || len(embed.Fields) != 3 {
-		t.Fatalf("embed = %+v", embed)
-	}
-	if embed.Fields[0].Name != "🏦 资金面" || !strings.Contains(embed.Fields[0].Value, "FRED · 1 个序列") || !embed.Fields[1].Inline || embed.Fields[1].Value != "**3.12**\nΔ 前值 +0.02\n📅 11-18" || embed.Fields[2].Name != "SOFR − IORB" || embed.Fields[2].Value != "+3 bp · 11-18" {
-		t.Errorf("fields = %+v", embed.Fields)
+	if embed.Footer == nil || embed.Footer.Text != "CoinGecko · Alpaca · FRED | CoinDaily" {
+		t.Fatalf("footer=%+v", embed.Footer)
 	}
 }
 
@@ -156,25 +163,34 @@ func largeDiscordReport() *MarketReport {
 		Crypto:      CryptoSection{Configured: true},
 		Stocks:      StockSection{Configured: true, Feed: "delayed_sip"},
 		Perpetuals:  PerpetualSection{Configured: true, Items: []PerpetualPrice{{Symbol: "xyz:ZHIPU", ObservedAt: date}}},
-		Fred:        FredSection{Configured: true, Spread: &FredObservation{Date: date, Value: 3}},
+		Canary:      CanarySection{Configured: true, sources: map[string]bool{"CoinGecko": true, "Alpaca": true, "FRED": true}},
 	}
-	for i := range 13 {
+	for i := range 10 {
 		report.Crypto.Items = append(report.Crypto.Items, CoinPrice{Name: fmt.Sprintf("Coin %d", i), Symbol: fmt.Sprintf("c%d", i)})
 	}
-	for i := range 11 {
+	for i := range 7 {
 		report.Stocks.Items = append(report.Stocks.Items, StockPrice{Symbol: fmt.Sprintf("S%d", i), PriceTime: date})
 	}
-	for _, id := range []string{"BAMLH0A0HYM2", "VIXCLS", "SOFR", "IORB"} {
-		report.Fred.Items = append(report.Fred.Items, FredSeries{ID: id, Observations: []FredObservation{{Date: date, Value: 3}}})
+	for _, id := range []string{"tether", "usd-coin", "TLT", "GLD", "UUP", "HYG"} {
+		group := etfGroup
+		if id == "tether" || id == "usd-coin" {
+			group = stablecoinGroup
+		}
+		report.Canary.Items = append(report.Canary.Items, marketCanary(group, id, []CanaryPoint{{Date: date, Value: 100}}))
 	}
+	var fred []FredSeries
+	for _, id := range []string{"BAMLH0A0HYM2", "VIXCLS", "SOFR", "IORB"} {
+		fred = append(fred, FredSeries{ID: id, Observations: []FredObservation{{Date: date, Value: 3.12}, {Date: date.AddDate(0, 0, -1), Value: 3.10}}})
+	}
+	report.Canary.Items = append(report.Canary.Items, fredCanaries(fred)...)
 	return report
 }
 
 func TestLargeMarketDiscordEmbeds(t *testing.T) {
 	report := largeDiscordReport()
 	embeds := NewReportGenerator().GenerateMarketDiscordEmbeds(report)
-	if len(embeds) != 2 || len(embeds[0].Fields) != 14 || len(embeds[1].Fields) != 22 {
-		t.Fatalf("expected the crypto section on page one and the remaining sections on page two")
+	if len(embeds) != 2 || len(embeds[0].Fields) != 23 || len(embeds[1].Fields) != 12 {
+		t.Fatalf("expected the canary section on page two")
 	}
 	first, last := embeds[0], embeds[1]
 	if first.Description == "" || first.Footer != nil || first.Timestamp != "" ||
@@ -198,10 +214,10 @@ func TestLargeMarketDiscordEmbeds(t *testing.T) {
 			}
 		}
 	}
-	if total != 36 {
-		t.Errorf("got %d fields, want 36", total)
+	if total != 35 {
+		t.Errorf("got %d fields, want 35", total)
 	}
-	for _, name := range []string{"高收益债利差 OAS (%)", "VIX", "SOFR (%)", "IORB (%)", "SOFR − IORB", "📈 xyz:ZHIPU · 行情"} {
+	for _, name := range []string{"USDT 供应", "USDC 供应", "TLT 长债", "GLD 黄金", "UUP 美元", "HYG 高收益债", "高收益债利差 OAS (%)", "VIX", "SOFR (%)", "IORB (%)", "SOFR − IORB", "📈 xyz:ZHIPU · 行情"} {
 		if seen[name] != 1 {
 			t.Errorf("field %s occurred %d times", name, seen[name])
 		}

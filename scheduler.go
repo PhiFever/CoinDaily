@@ -24,13 +24,13 @@ func NewScheduler(config *Config) *Scheduler {
 		reportGen: NewReportGenerator(),
 		stopChan:  make(chan bool),
 	}
-	if len(config.Coins) > 0 {
+	if config.usesCoinGecko() {
 		scheduler.coinClient = NewCoinGeckoClient(config.CoinGecko.APIKey, config.Proxy.Enabled, config.Proxy.URL)
 	}
 	if len(config.Fred.Series) > 0 {
 		scheduler.fredClient = NewFredClient(config.Fred.APIKey, config.Proxy.Enabled, config.Proxy.URL)
 	}
-	if len(config.Stocks) > 0 {
+	if config.usesAlpaca() {
 		scheduler.stockClient = NewAlpacaClient(config.Alpaca.APIKey, config.Alpaca.SecretKey, config.Alpaca.Feed, config.Proxy.Enabled, config.Proxy.URL)
 	}
 	if len(config.Hyperliquid.Perpetuals) > 0 {
@@ -99,6 +99,8 @@ func (s *Scheduler) runOnceNow() {
 func (s *Scheduler) runDailyReport() {
 	log.Println("开始生成市场行情报表...")
 	runner := &ReportRunner{
+		StablecoinIDs:    s.config.Canary.Stablecoins,
+		ETFs:             s.config.Canary.ETFs,
 		CoinIDs:          s.config.Coins,
 		StockSymbols:     s.config.Stocks,
 		PerpetualSymbols: s.config.Hyperliquid.Perpetuals,
@@ -111,9 +113,11 @@ func (s *Scheduler) runDailyReport() {
 		runner.FredCollector = s.fredClient
 	}
 	if s.coinClient != nil {
+		runner.StablecoinCollector = s.coinClient
 		runner.CryptoCollector = s.coinClient
 	}
 	if s.stockClient != nil {
+		runner.ETFCollector = s.stockClient
 		runner.StockCollector = s.stockClient
 	}
 	if s.perpClient != nil {

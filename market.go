@@ -6,16 +6,16 @@ import "time"
 // market into CoinPrice's cryptocurrency schema.
 type MarketReport struct {
 	GeneratedAt time.Time
-	Fred        FredSection
+	Canary      CanarySection
 	Crypto      CryptoSection
 	Stocks      StockSection
 	Perpetuals  PerpetualSection
 }
 
-type FredSection struct {
+type CanarySection struct {
 	Configured bool
-	Items      []FredSeries
-	Spread     *FredObservation
+	Items      []CanarySeries
+	sources    map[string]bool
 	Warning    string
 }
 
@@ -39,7 +39,7 @@ type PerpetualSection struct {
 }
 
 func (r *MarketReport) HasData() bool {
-	return len(r.Crypto.Items) > 0 || len(r.Stocks.Items) > 0 || len(r.Perpetuals.Items) > 0 || len(r.Fred.Items) > 0
+	return len(r.Crypto.Items) > 0 || len(r.Stocks.Items) > 0 || len(r.Perpetuals.Items) > 0 || len(r.Canary.Items) > 0
 }
 
 type StockPrice struct {

@@ -39,7 +39,7 @@ hyperliquid:
     - "xyz:ZHIPU"
 ```
 
-`stocks` 为空时不需要 Alpaca 密钥。Hyperliquid Info API 是公开接口，不需要钱包、私钥或账户信息。旧的纯 CoinGecko 配置仍然有效。
+`stocks` 和 `canary.etfs` 都为空时不需要 Alpaca 密钥。Hyperliquid Info API 是公开接口，不需要钱包、私钥或账户信息。旧的纯 CoinGecko 配置仍然有效。
 
 ### 2. 编译并运行
 
@@ -129,21 +129,22 @@ https://api.coingecko.com/api/v3/coins/list
 
 持仓快照保存在活动配置文件旁的 `.coindaily-state.json`，采用临时文件加原子替换写入。文件缺失、损坏或快照过期时，持仓变化显示 `N/A`，不会阻止报表发送。
 
-## FRED 资金面
+## 流动性金丝雀
 
-在 [FRED 官网申请 API key](https://fred.stlouisfed.org/docs/api/api_key.html)，将密钥和要跟踪的序列填入配置文件。
+在 `canary.stablecoins` 填 CoinGecko ID，跟踪稳定币美元市值；在 `canary.etfs` 填 Alpaca 代码，跟踪复权收盘价。两组分别使用 CoinGecko 和 Alpaca 密钥。FRED 指标沿用 `fred.series` 配置，也显示在这个分区。[申请 FRED API key](https://fred.stlouisfed.org/docs/api/api_key.html)
 
 ```yaml
+canary:
+  stablecoins: ["tether", "usd-coin"]
+  etfs: ["TLT", "GLD", "UUP", "HYG"]
 fred:
   api_key: "your_fred_api_key_here"
-  series:
-    - "BAMLH0A0HYM2"
-    - "VIXCLS"
-    - "SOFR"
-    - "IORB"
+  series: ["BAMLH0A0HYM2", "VIXCLS", "SOFR", "IORB"]
 ```
 
-报表列出每个序列的最新观测日、数值和较前一次有效观测的变化。高收益债利差和 VIX 分别反映信用风险和市场波动。配置 SOFR 和 IORB 后，报表还会按最近的共同观测日计算两者的利差，单位为基点（bp）。FRED 数据通常滞后一个交易日。
+每项都显示 1、7、30 天变化。遇到休市或缺值，取目标日期当天或之前最近一次观测，历史不足时显示 N/A。稳定币和 ETF 显示百分比变化，利率和利差显示基点变化，VIX 显示点数变化。SOFR 和 IORB 都有数据的日期还会计算两者的利差。
+
+走势条按每项指标近 30 天的高低值单独缩放。看形状用走势条，比较幅度看变化量。FRED 数据通常滞后一个交易日，ETF 当天的日线可能尚未收盘。
 
 ## Gmail 配置说明
 

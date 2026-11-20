@@ -20,6 +20,11 @@ type Config struct {
 		Feed      string `yaml:"feed"`
 	} `yaml:"alpaca"`
 
+	Canary struct {
+		Stablecoins []string `yaml:"stablecoins"`
+		ETFs        []string `yaml:"etfs"`
+	} `yaml:"canary"`
+
 	Fred struct {
 		APIKey string   `yaml:"api_key"`
 		Series []string `yaml:"series"`
@@ -84,8 +89,11 @@ func LoadConfig(configPath string) (*Config, error) {
 	return &config, nil
 }
 
+func (c *Config) usesCoinGecko() bool { return len(c.Coins) > 0 || len(c.Canary.Stablecoins) > 0 }
+func (c *Config) usesAlpaca() bool    { return len(c.Stocks) > 0 || len(c.Canary.ETFs) > 0 }
+
 func validateConfig(config *Config) error {
-	if len(config.Coins) > 0 && strings.TrimSpace(config.CoinGecko.APIKey) == "" {
+	if config.usesCoinGecko() && strings.TrimSpace(config.CoinGecko.APIKey) == "" {
 		return fmt.Errorf("coingecko.api_key is required")
 	}
 
@@ -95,12 +103,12 @@ func validateConfig(config *Config) error {
 	if config.Alpaca.Feed != "delayed_sip" {
 		return fmt.Errorf("alpaca.feed must be delayed_sip")
 	}
-	if len(config.Stocks) > 0 {
+	if config.usesAlpaca() {
 		if strings.TrimSpace(config.Alpaca.APIKey) == "" {
-			return fmt.Errorf("alpaca.api_key is required when stocks are configured")
+			return fmt.Errorf("alpaca.api_key is required when stocks or canary ETFs are configured")
 		}
 		if strings.TrimSpace(config.Alpaca.SecretKey) == "" {
-			return fmt.Errorf("alpaca.secret_key is required when stocks are configured")
+			return fmt.Errorf("alpaca.secret_key is required when stocks or canary ETFs are configured")
 		}
 	}
 	if len(config.Fred.Series) > 0 && strings.TrimSpace(config.Fred.APIKey) == "" {
@@ -147,8 +155,8 @@ func validateConfig(config *Config) error {
 		}
 	}
 
-	if len(config.Coins) == 0 && len(config.Stocks) == 0 && len(config.Hyperliquid.Perpetuals) == 0 && len(config.Fred.Series) == 0 {
-		return fmt.Errorf("at least one coin, stock, perpetual, or FRED series must be specified")
+	if !config.usesCoinGecko() && !config.usesAlpaca() && len(config.Hyperliquid.Perpetuals) == 0 && len(config.Fred.Series) == 0 {
+		return fmt.Errorf("at least one coin, stock, perpetual, canary, or FRED series must be specified")
 	}
 	if config.Schedule.Hour < 0 || config.Schedule.Hour > 23 {
 		return fmt.Errorf("schedule.hour must be between 0 and 23")

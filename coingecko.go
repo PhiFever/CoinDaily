@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -62,11 +63,44 @@ func (c *CoinGeckoClient) GetCoinPrices(coinIDs []string) ([]CoinPrice, error) {
 	url := fmt.Sprintf("%s/coins/markets?vs_currency=usd&ids=%s&order=market_cap_desc&per_page=100&page=1&sparkline=false",
 		c.baseURL, idsParam)
 
+	return getCoinGeckoJSON[[]CoinPrice](c, url)
+}
+
+func (c *CoinGeckoClient) GetMarketCaps(ids []string) ([]CanarySeries, error) {
+	var items []CanarySeries
+	var issues []error
+	for _, id := range ids {
+		type marketChart struct {
+			MarketCaps [][]float64 `json:"market_caps"`
+		}
+		endpoint := c.baseURL + "/coins/" + url.PathEscape(id) + "/market_chart?vs_currency=usd&days=31&interval=daily"
+		chart, err := getCoinGeckoJSON[marketChart](c, endpoint)
+		if err != nil {
+			issues = append(issues, fmt.Errorf("%s: %w", id, err))
+			continue
+		}
+		var samples []CanaryPoint
+		for _, row := range chart.MarketCaps {
+			if len(row) == 2 {
+				samples = append(samples, CanaryPoint{Date: time.UnixMilli(int64(row[0])), Value: row[1]})
+			}
+		}
+		if len(samples) == 0 {
+			issues = append(issues, fmt.Errorf("%s has no market cap observations", id))
+			continue
+		}
+		items = append(items, marketCanary(stablecoinGroup, id, samples))
+	}
+	return items, errors.Join(issues...)
+}
+
+func getCoinGeckoJSON[T any](c *CoinGeckoClient, url string) (T, error) {
 	var lastErr error
 	for attempt := 1; attempt <= maxRetries; attempt++ {
-		coins, err := c.doRequest(url)
+		var result T
+		err := c.doRequest(url, &result)
 		if err == nil {
-			return coins, nil
+			return result, nil
 		}
 		lastErr = err
 
@@ -76,36 +110,36 @@ func (c *CoinGeckoClient) GetCoinPrices(coinIDs []string) ([]CoinPrice, error) {
 		}
 	}
 
-	return nil, fmt.Errorf("failed after %d attempts: %w", maxRetries, lastErr)
+	var zero T
+	return zero, fmt.Errorf("failed after %d attempts: %w", maxRetries, lastErr)
 }
 
-func (c *CoinGeckoClient) doRequest(url string) ([]CoinPrice, error) {
+func (c *CoinGeckoClient) doRequest(url string, target any) error {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+		return fmt.Errorf("failed to create request: %w", err)
 	}
 
 	req.Header.Set("x-cg-demo-api-key", c.apiKey)
 
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch data from CoinGecko: %w", err)
+		return fmt.Errorf("failed to fetch data from CoinGecko: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("CoinGecko API returned status code: %d", resp.StatusCode)
+		return fmt.Errorf("CoinGecko API returned status code: %d", resp.StatusCode)
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read response body: %w", err)
+		return fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	var coins []CoinPrice
-	if err := json.Unmarshal(body, &coins); err != nil {
-		return nil, fmt.Errorf("failed to parse JSON response: %w", err)
+	if err := json.Unmarshal(body, target); err != nil {
+		return fmt.Errorf("failed to parse JSON response: %w", err)
 	}
 
-	return coins, nil
+	return nil
 }

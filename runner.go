@@ -33,6 +33,13 @@ type DiscordReportSender interface {
 }
 
 type ReportRunner struct {
+	StablecoinIDs, ETFs []string
+	StablecoinCollector interface {
+		GetMarketCaps([]string) ([]CanarySeries, error)
+	}
+	ETFCollector interface {
+		GetDailyCloses([]string, time.Time) ([]CanarySeries, error)
+	}
 	FredSeries       []string
 	FredCollector    FredCollector
 	CoinIDs          []string
@@ -109,6 +116,37 @@ func (r *ReportRunner) Run() (*MarketReport, error) {
 		}
 	}
 
+	addCanaries := func(source string, items []CanarySeries, err error) {
+		section := &report.Canary
+		section.Configured = true
+		if section.sources == nil {
+			section.sources = make(map[string]bool)
+		}
+		section.sources[source] = true
+		section.Items = append(section.Items, items...)
+		if warning := sectionWarning(source, len(items), err); warning != "" {
+			section.Warning = appendWarning(section.Warning, warning)
+		}
+		if failure := sourceFailure(source, len(items), err); failure != nil {
+			sourceErrors = append(sourceErrors, failure)
+		}
+	}
+	if len(r.StablecoinIDs) > 0 {
+		if r.StablecoinCollector == nil {
+			addCanaries("CoinGecko", nil, errors.New("collector is unavailable"))
+		} else {
+			items, err := r.StablecoinCollector.GetMarketCaps(r.StablecoinIDs)
+			addCanaries("CoinGecko", items, err)
+		}
+	}
+	if len(r.ETFs) > 0 {
+		if r.ETFCollector == nil {
+			addCanaries("Alpaca", nil, errors.New("collector is unavailable"))
+		} else {
+			items, err := r.ETFCollector.GetDailyCloses(r.ETFs, now)
+			addCanaries("Alpaca", items, err)
+		}
+	}
 	if len(r.FredSeries) > 0 {
 		var items []FredSeries
 		var err error
@@ -117,10 +155,7 @@ func (r *ReportRunner) Run() (*MarketReport, error) {
 		} else {
 			items, err = r.FredCollector.GetSeries(r.FredSeries)
 		}
-		report.Fred = FredSection{Configured: true, Items: items, Spread: sofrIORBSpread(items), Warning: sectionWarning("FRED", len(items), err)}
-		if failure := sourceFailure("FRED", len(items), err); failure != nil {
-			sourceErrors = append(sourceErrors, failure)
-		}
+		addCanaries("FRED", fredCanaries(items), err)
 	}
 
 	for _, err := range sourceErrors {

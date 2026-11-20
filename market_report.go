@@ -58,17 +58,18 @@ body{font-family:Arial,sans-serif;margin:20px;background:#f5f5f5;color:#2c3e50}.
 		body.WriteString(`</div>`)
 	}
 
-	if report.Fred.Configured {
-		body.WriteString(`<div class="section"><h2>资金面（FRED）</h2><div class="meta">FRED 数据按观测日发布，通常滞后 1 个交易日</div>`)
-		writeHTMLWarning(&body, report.Fred.Warning)
-		if len(report.Fred.Items) > 0 {
-			body.WriteString(`<table><thead><tr><th>序列</th><th>最新值</th><th>观测日</th><th>较前值</th></tr></thead><tbody>`)
-			for _, item := range report.Fred.Items {
-				latest := item.Observations[0]
-				fmt.Fprintf(&body, `<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>`, html.EscapeString(fredSeriesName(item.ID)), formatMarketNumber(latest.Value), latest.Date.Format(time.DateOnly), formatFredChange(item))
-			}
-			if spread := report.Fred.Spread; spread != nil {
-				fmt.Fprintf(&body, `<tr><td>SOFR − IORB</td><td>%s</td><td>%s</td><td>N/A</td></tr>`, formatFredSpread(spread), spread.Date.Format(time.DateOnly))
+	if report.Canary.Configured {
+		body.WriteString(`<div class="section"><h2>🐤 流动性金丝雀</h2><div class="meta">走势条按各自 30 天的最高最低缩放，只看形状，幅度看变化量。FRED 按观测日发布，通常滞后 1 个交易日；ETF 当天日线可能未收盘。</div>`)
+		writeHTMLWarning(&body, report.Canary.Warning)
+		if len(report.Canary.Items) > 0 {
+			body.WriteString(`<table><thead><tr><th>组</th><th>指标</th><th>最新值</th><th>1d</th><th>7d</th><th>30d</th><th>30 天走势</th><th>观测日</th></tr></thead><tbody>`)
+			for _, item := range report.Canary.Items {
+				latest := item.Points[len(item.Points)-1]
+				fmt.Fprintf(&body, `<tr><td>%s</td><td>%s</td><td>%s</td>`, html.EscapeString(item.Group), html.EscapeString(item.Name), canaryValue(item, latest.Value))
+				for _, days := range canaryWindows {
+					fmt.Fprintf(&body, "<td>%s</td>", canaryChange(item, days, false))
+				}
+				fmt.Fprintf(&body, "<td>%s</td><td>%s</td></tr>", item.Sparkline(), latest.Date.Format(time.DateOnly))
 			}
 			body.WriteString(`</tbody></table>`)
 		}
@@ -165,21 +166,18 @@ func (r *ReportGenerator) GenerateMarketDiscordEmbeds(report *MarketReport) []*D
 		sections = append(sections, section)
 	}
 
-	if report.Fred.Configured {
-		section := discordFieldSection{header: discordSectionHeader("🏦 资金面", fmt.Sprintf("FRED · %d 个序列", len(report.Fred.Items)))}
-		if report.Fred.Warning != "" {
-			section.add(warningField("资金面", report.Fred.Warning))
+	if report.Canary.Configured {
+		section := discordFieldSection{header: discordSectionHeader("🐤 流动性金丝雀", "稳定币 · ETF · FRED · 1d / 7d / 30d")}
+		if report.Canary.Warning != "" {
+			section.add(warningField("流动性金丝雀", report.Canary.Warning))
 		}
-		for _, item := range report.Fred.Items {
-			latest := item.Observations[0]
-			section.add(EmbedField{
-				Name:   fredSeriesName(item.ID),
-				Value:  discordCompactMetrics("**"+formatMarketNumber(latest.Value)+"**", "Δ 前值 "+formatFredChange(item), "📅 "+latest.Date.Format("01-02")),
-				Inline: true,
-			})
-		}
-		if spread := report.Fred.Spread; spread != nil {
-			section.add(EmbedField{Name: "SOFR − IORB", Value: formatFredSpread(spread) + " · " + spread.Date.Format("01-02"), Inline: true})
+		for _, item := range report.Canary.Items {
+			latest := item.Points[len(item.Points)-1]
+			metrics := []string{"**" + canaryValue(item, latest.Value) + "**"}
+			for _, days := range canaryWindows {
+				metrics = append(metrics, fmt.Sprintf("%dd %s", days, canaryChange(item, days, true)))
+			}
+			section.add(EmbedField{Name: item.Name, Value: strings.Join(metrics, " · ") + "\n" + item.Sparkline() + " · 📅 " + latest.Date.Format("01-02")})
 		}
 		sections = append(sections, section)
 	}
@@ -276,15 +274,47 @@ func fredSeriesName(id string) string {
 	return id
 }
 
-func formatFredChange(item FredSeries) string {
-	if change := item.Change(); change != nil {
-		return fmt.Sprintf("%+.2f", *change)
+var canaryWindows = [...]int{1, 7, 30}
+
+func canaryValue(item CanarySeries, value float64) string {
+	if item.Group == stablecoinGroup {
+		return formatMarketLarge(value)
 	}
-	return "N/A"
+	if item.Kind == basisPointChange {
+		return fmt.Sprintf("%+.0f bp", value)
+	}
+	return formatMarketNumber(value)
 }
 
-func formatFredSpread(spread *FredObservation) string {
-	return fmt.Sprintf("%+.0f bp", spread.Value)
+func canaryChange(item CanarySeries, days int, marked bool) string {
+	delta := item.Change(days)
+	if delta == nil {
+		return "N/A"
+	}
+	var change string
+	switch item.Kind {
+	case percentChange:
+		change = formatSignedPercent(*delta)
+	case rateChange, basisPointChange:
+		change = fmt.Sprintf("%+.0f bp", *delta)
+	default:
+		change = fmt.Sprintf("%+.2f", *delta)
+	}
+	if marked {
+		return canaryArrow(*delta) + change
+	}
+	return change
+}
+
+// Canary moves carry no good/bad colour: a rising VIX or OAS is a risk signal, not a gain.
+func canaryArrow(value float64) string {
+	switch {
+	case value > 0:
+		return "▲"
+	case value < 0:
+		return "▼"
+	}
+	return "·"
 }
 
 func writeHTMLWarning(body *strings.Builder, warning string) {
@@ -567,16 +597,18 @@ func marketReportColor(report *MarketReport) int {
 
 func configuredSourceNames(report *MarketReport) []string {
 	sources := make([]string, 0, 3)
-	if report.Crypto.Configured {
+	if report.Crypto.Configured || report.Canary.sources["CoinGecko"] {
 		sources = append(sources, "CoinGecko")
 	}
 	if report.Stocks.Configured {
 		sources = append(sources, "Alpaca "+report.Stocks.Feed)
+	} else if report.Canary.sources["Alpaca"] {
+		sources = append(sources, "Alpaca")
 	}
 	if report.Perpetuals.Configured {
 		sources = append(sources, "Hyperliquid")
 	}
-	if report.Fred.Configured {
+	if report.Canary.sources["FRED"] {
 		sources = append(sources, "FRED")
 	}
 	return sources

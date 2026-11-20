@@ -331,3 +331,21 @@ func TestFredOnlyConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestCanaryOnlyConfig(t *testing.T) {
+	var c Config
+	c.Discord.BotToken, c.Discord.ChannelID = "token", "channel"
+	c.Canary.Stablecoins = []string{"tether"}
+	if err := validateConfig(&c); err == nil || !strings.Contains(err.Error(), "coingecko.api_key") {
+		t.Fatalf("missing CoinGecko key: %v", err)
+	}
+	c.CoinGecko.APIKey = "key"
+	c.Canary.ETFs = []string{"TLT"}
+	if err := validateConfig(&c); err == nil || !strings.Contains(err.Error(), "alpaca.api_key") {
+		t.Fatalf("missing Alpaca key: %v", err)
+	}
+	c.Alpaca.APIKey, c.Alpaca.SecretKey = "key", "secret"
+	if err := validateConfig(&c); err != nil {
+		t.Fatal(err)
+	}
+}

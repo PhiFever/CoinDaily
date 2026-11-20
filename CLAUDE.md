@@ -27,6 +27,7 @@ CoinDaily 是一个 Go 应用程序，从 CoinGecko API 获取加密货币价格
 - **main.go** - 入口，处理命令行参数 (-config, -once) 和信号处理（优雅关闭）
 - **config.go** - YAML 配置加载和验证（Config 结构体）
 - **coingecko.go** - CoinGecko API 客户端，支持可选代理（CoinGeckoClient）
+- **canary.go** - 整理金丝雀日序列，计算 1、7、30 天变化和走势条
 - **fred.go** - 采集 FRED 序列，按共同观测日计算 SOFR 与 IORB 利差
 - **report.go** - 报表生成（HTML 和 Discord Embed）（ReportGenerator）
 - **email.go** - SMTP 邮件发送（EmailSender）

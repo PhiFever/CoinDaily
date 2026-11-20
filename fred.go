@@ -40,13 +40,6 @@ type FredSeries struct {
 	Observations []FredObservation
 }
 
-func (s FredSeries) Change() *float64 {
-	if len(s.Observations) < 2 {
-		return nil
-	}
-	return floatPtr(s.Observations[0].Value - s.Observations[1].Value)
-}
-
 func (c *FredClient) GetSeries(ids []string) ([]FredSeries, error) {
 	var items []FredSeries
 	var issues []error
@@ -62,7 +55,7 @@ func (c *FredClient) GetSeries(ids []string) ([]FredSeries, error) {
 }
 
 func (c *FredClient) getObservations(id string) ([]FredObservation, error) {
-	query := url.Values{"series_id": {id}, "api_key": {c.apiKey}, "file_type": {"json"}, "sort_order": {"desc"}, "limit": {"10"}}
+	query := url.Values{"series_id": {id}, "api_key": {c.apiKey}, "file_type": {"json"}, "sort_order": {"desc"}, "limit": {"45"}}
 	endpoint := c.baseURL + "/fred/series/observations?" + query.Encode()
 	for attempt := 1; ; attempt++ {
 		resp, err := c.client.Get(endpoint)
@@ -108,22 +101,36 @@ func parseFredObservations(body io.Reader) ([]FredObservation, error) {
 	return observations, nil
 }
 
-func sofrIORBSpread(items []FredSeries) *FredObservation {
-	var sofr, iorb []FredObservation
-	for _, item := range items {
-		switch item.ID {
-		case "SOFR":
-			sofr = item.Observations
-		case "IORB":
-			iorb = item.Observations
+func fredCanaries(series []FredSeries) []CanarySeries {
+	var items []CanarySeries
+	var sofr []CanaryPoint
+	reserves := make(map[time.Time]float64)
+	for _, s := range series {
+		item := CanarySeries{Group: fredGroup, ID: s.ID, Name: fredSeriesName(s.ID), Kind: pointChange}
+		switch s.ID {
+		case "BAMLH0A0HYM2", "SOFR", "IORB":
+			item.Kind = rateChange
 		}
-	}
-	for _, rate := range sofr {
-		for _, reserve := range iorb {
-			if rate.Date.Equal(reserve.Date) {
-				return &FredObservation{Date: rate.Date, Value: (rate.Value - reserve.Value) * 100}
+		for i := len(s.Observations) - 1; i >= 0; i-- {
+			obs := s.Observations[i]
+			item.Points = append(item.Points, CanaryPoint(obs))
+			if s.ID == "IORB" {
+				reserves[obs.Date] = obs.Value
 			}
 		}
+		if s.ID == "SOFR" {
+			sofr = item.Points
+		}
+		items = append(items, item)
 	}
-	return nil
+	spread := CanarySeries{Group: fredGroup, ID: "SOFR-IORB", Name: "SOFR − IORB", Kind: basisPointChange}
+	for _, p := range sofr {
+		if reserve, ok := reserves[p.Date]; ok {
+			spread.Points = append(spread.Points, CanaryPoint{Date: p.Date, Value: (p.Value - reserve) * 100})
+		}
+	}
+	if len(spread.Points) > 0 {
+		items = append(items, spread)
+	}
+	return items
 }

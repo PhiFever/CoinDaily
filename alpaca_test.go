@@ -18,7 +18,7 @@ func TestAlpacaClientBatchesDelayedSnapshotsAndBars(t *testing.T) {
 		if r.Header.Get("APCA-API-KEY-ID") != "key" || r.Header.Get("APCA-API-SECRET-KEY") != "secret" {
 			t.Error("Alpaca auth headers missing")
 		}
-		if r.URL.Query().Get("symbols") != "QQQ,SPCX" || r.URL.Query().Get("feed") != "sip" {
+		if r.URL.Query().Get("adjustment") != "raw" || r.URL.Query().Get("symbols") != "QQQ,SPCX" || r.URL.Query().Get("feed") != "sip" {
 			t.Errorf("query = %s", r.URL.RawQuery)
 		}
 		if r.URL.Path != "/v2/stocks/bars" {
@@ -135,5 +135,24 @@ func TestAlpacaClientFollowsBarPagination(t *testing.T) {
 	prices, err := client.GetStockPrices([]string{"QQQ", "SPCX"}, now)
 	if len(prices) != 2 || err == nil || !strings.Contains(err.Error(), "completed 1h") {
 		t.Fatalf("prices=%#v err=%v", prices, err)
+	}
+}
+
+func TestCanaryETFAdjustedCloses(t *testing.T) {
+	now := time.Date(2026, 11, 20, 15, 0, 0, 0, time.UTC)
+	cutoff := now.Add(-alpacaDelayedSIPLag)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		if q.Get("adjustment") != "all" || q.Get("timeframe") != "1Day" || q.Get("start") != cutoff.AddDate(0, 0, -45).Format(time.RFC3339) || q.Get("end") != cutoff.Format(time.RFC3339) {
+			t.Errorf("query=%s", r.URL.RawQuery)
+		}
+		fmt.Fprint(w, `{"bars":{"TLT":[{"t":"2026-11-20T05:00:00Z","c":89.5}]}}`)
+	}))
+	defer server.Close()
+	c := NewAlpacaClient("key", "secret", "", false, "")
+	c.baseURL = server.URL
+	items, err := c.GetDailyCloses([]string{"TLT"}, now)
+	if err != nil || len(items) != 1 || len(items[0].Points) != 1 || items[0].Points[0].Value != 89.5 {
+		t.Fatalf("items=%v err=%v", items, err)
 	}
 }
