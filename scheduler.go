@@ -7,6 +7,7 @@ import (
 
 type Scheduler struct {
 	config        *Config
+	fredClient    *FredClient
 	coinClient    *CoinGeckoClient
 	stockClient   *AlpacaClient
 	perpClient    *HyperliquidClient
@@ -25,6 +26,9 @@ func NewScheduler(config *Config) *Scheduler {
 	}
 	if len(config.Coins) > 0 {
 		scheduler.coinClient = NewCoinGeckoClient(config.CoinGecko.APIKey, config.Proxy.Enabled, config.Proxy.URL)
+	}
+	if len(config.Fred.Series) > 0 {
+		scheduler.fredClient = NewFredClient(config.Fred.APIKey, config.Proxy.Enabled, config.Proxy.URL)
 	}
 	if len(config.Stocks) > 0 {
 		scheduler.stockClient = NewAlpacaClient(config.Alpaca.APIKey, config.Alpaca.SecretKey, config.Alpaca.Feed, config.Proxy.Enabled, config.Proxy.URL)
@@ -101,6 +105,10 @@ func (s *Scheduler) runDailyReport() {
 		StockFeed:        s.config.Alpaca.Feed,
 		StateStore:       s.stateStore,
 		ReportGenerator:  s.reportGen,
+	}
+	if s.fredClient != nil {
+		runner.FredSeries = s.config.Fred.Series
+		runner.FredCollector = s.fredClient
 	}
 	if s.coinClient != nil {
 		runner.CryptoCollector = s.coinClient

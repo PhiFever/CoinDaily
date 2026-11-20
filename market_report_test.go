@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -43,7 +44,7 @@ func TestMarketReportRendersThreeSemanticSections(t *testing.T) {
 		t.Fatal("report must not claim net inflow")
 	}
 
-	embed := gen.GenerateMarketDiscordEmbed(report)
+	embed := gen.GenerateMarketDiscordEmbeds(report)[0]
 	if embed.Title != "📈 市场行情报表" || len(embed.Fields) != 9 {
 		t.Fatalf("embed=%#v", embed)
 	}
@@ -97,7 +98,7 @@ func TestDiscordEmbedUsesHorizontalAssetCards(t *testing.T) {
 		}},
 		Perpetuals: PerpetualSection{Configured: true, Items: []PerpetualPrice{{Symbol: "xyz:ZHIPU", MarkPrice: 1, ObservedAt: now}}},
 	}
-	embed := NewReportGenerator().GenerateMarketDiscordEmbed(report)
+	embed := NewReportGenerator().GenerateMarketDiscordEmbeds(report)[0]
 	if len(embed.Fields) != 11 {
 		t.Fatalf("fields=%d, want 11", len(embed.Fields))
 	}
@@ -122,5 +123,87 @@ func TestMarketReportRendersUnavailableValuesAsNA(t *testing.T) {
 	html := NewReportGenerator().GenerateMarketHTML(report)
 	if !strings.Contains(html, "N/A") || !strings.Contains(html, "较上次 N/A") {
 		t.Fatalf("missing N/A rendering: %s", html)
+	}
+}
+
+func TestFredReportRendering(t *testing.T) {
+	date := time.Date(2026, 11, 18, 0, 0, 0, 0, time.UTC)
+	report := &MarketReport{GeneratedAt: date, Fred: FredSection{
+		Configured: true,
+		Items:      []FredSeries{{ID: "SOFR", Observations: []FredObservation{{Date: date, Value: 3.12}, {Date: date.AddDate(0, 0, -1), Value: 3.10}}}},
+		Spread:     &FredObservation{Date: date, Value: 3},
+	}}
+	generator := NewReportGenerator()
+	html := generator.GenerateMarketHTML(report)
+	for _, want := range []string{"资金面（FRED）", "SOFR (%)", "2026-11-18", "+0.02", "SOFR − IORB", "+3 bp"} {
+		if !strings.Contains(html, want) {
+			t.Errorf("HTML missing %q", want)
+		}
+	}
+	embed := generator.GenerateMarketDiscordEmbeds(report)[0]
+	if embed.Footer == nil || !strings.Contains(embed.Footer.Text, "FRED") || len(embed.Fields) != 3 {
+		t.Fatalf("embed = %+v", embed)
+	}
+	if embed.Fields[0].Name != "🏦 资金面" || !strings.Contains(embed.Fields[0].Value, "FRED · 1 个序列") || !embed.Fields[1].Inline || embed.Fields[1].Value != "**3.12**\nΔ 前值 +0.02\n📅 11-18" || embed.Fields[2].Name != "SOFR − IORB" || embed.Fields[2].Value != "+3 bp · 11-18" {
+		t.Errorf("fields = %+v", embed.Fields)
+	}
+}
+
+func largeDiscordReport() *MarketReport {
+	date := time.Date(2026, 11, 18, 0, 0, 0, 0, time.UTC)
+	report := &MarketReport{
+		GeneratedAt: date,
+		Crypto:      CryptoSection{Configured: true},
+		Stocks:      StockSection{Configured: true, Feed: "delayed_sip"},
+		Perpetuals:  PerpetualSection{Configured: true, Items: []PerpetualPrice{{Symbol: "xyz:ZHIPU", ObservedAt: date}}},
+		Fred:        FredSection{Configured: true, Spread: &FredObservation{Date: date, Value: 3}},
+	}
+	for i := range 13 {
+		report.Crypto.Items = append(report.Crypto.Items, CoinPrice{Name: fmt.Sprintf("Coin %d", i), Symbol: fmt.Sprintf("c%d", i)})
+	}
+	for i := range 11 {
+		report.Stocks.Items = append(report.Stocks.Items, StockPrice{Symbol: fmt.Sprintf("S%d", i), PriceTime: date})
+	}
+	for _, id := range []string{"BAMLH0A0HYM2", "VIXCLS", "SOFR", "IORB"} {
+		report.Fred.Items = append(report.Fred.Items, FredSeries{ID: id, Observations: []FredObservation{{Date: date, Value: 3}}})
+	}
+	return report
+}
+
+func TestLargeMarketDiscordEmbeds(t *testing.T) {
+	report := largeDiscordReport()
+	embeds := NewReportGenerator().GenerateMarketDiscordEmbeds(report)
+	if len(embeds) != 2 || len(embeds[0].Fields) != 14 || len(embeds[1].Fields) != 22 {
+		t.Fatalf("expected the crypto section on page one and the remaining sections on page two")
+	}
+	first, last := embeds[0], embeds[1]
+	if first.Description == "" || first.Footer != nil || first.Timestamp != "" ||
+		last.Title != "📈 市场行情报表（续 2）" || last.Description != "" || last.Footer == nil || last.Timestamp != report.GeneratedAt.Format(time.RFC3339) {
+		t.Fatal("unexpected metadata on split report")
+	}
+	seen := map[string]int{}
+	total := 0
+	for i, embed := range embeds {
+		if len(embed.Fields) > maxEmbedFields || calculateEmbedLength(embed) > maxEmbedTotalLength {
+			t.Fatalf("embed %d exceeds limits", i+1)
+		}
+		for j, field := range embed.Fields {
+			total++
+			seen[field.Name]++
+			if strings.Contains(field.Value, "更多标的已省略") {
+				t.Errorf("embed %d truncated %s", i+1, field.Name)
+			}
+			if field.Name == "📈 xyz:ZHIPU · 行情" && (j+2 >= len(embed.Fields) || embed.Fields[j+1].Name != "💰 持仓 / 资金" || embed.Fields[j+2].Name != "🔥 成交活跃度") {
+				t.Error("split perpetual fields")
+			}
+		}
+	}
+	if total != 36 {
+		t.Errorf("got %d fields, want 36", total)
+	}
+	for _, name := range []string{"高收益债利差 OAS (%)", "VIX", "SOFR (%)", "IORB (%)", "SOFR − IORB", "📈 xyz:ZHIPU · 行情"} {
+		if seen[name] != 1 {
+			t.Errorf("field %s occurred %d times", name, seen[name])
+		}
 	}
 }

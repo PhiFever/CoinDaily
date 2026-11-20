@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -315,4 +316,18 @@ func (c *Config) IsEmailConfigured() bool {
 // IsDiscordConfigured 检查 Discord 配置是否完整
 func (c *Config) IsDiscordConfigured() bool {
 	return c.Discord.BotToken != "" && c.Discord.ChannelID != ""
+}
+
+func TestFredOnlyConfig(t *testing.T) {
+	config := Config{}
+	config.Discord.BotToken = "token"
+	config.Discord.ChannelID = "channel"
+	config.Fred.Series = []string{"SOFR"}
+	if err := validateConfig(&config); err == nil || !strings.Contains(err.Error(), "fred.api_key") {
+		t.Fatalf("missing key: %v", err)
+	}
+	config.Fred.APIKey = "test-key"
+	if err := validateConfig(&config); err != nil {
+		t.Fatal(err)
+	}
 }

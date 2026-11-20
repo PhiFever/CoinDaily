@@ -2,6 +2,9 @@ package main
 
 import (
 	"errors"
+	"fmt"
+	"math"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -174,5 +177,25 @@ func TestReportRunnerStateWriteFailureDoesNotSuppressReport(t *testing.T) {
 	report, err := runner.Run()
 	if err != nil || !report.HasData() || !strings.Contains(report.Perpetuals.Warning, "保存失败") {
 		t.Fatalf("report=%#v err=%v", report, err)
+	}
+}
+
+func TestFredSpreadUsesLatestCommonDate(t *testing.T) {
+	client := fredTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Query().Get("series_id") {
+		case "SOFR":
+			fmt.Fprint(w, `{"observations":[{"date":"2026-11-18","value":"3.12"},{"date":"2026-11-17","value":"3.00"}]}`)
+		case "IORB":
+			fmt.Fprint(w, `{"observations":[{"date":"2026-11-19","value":"3.10"},{"date":"2026-11-18","value":"3.09"},{"date":"2026-11-17","value":"3.08"}]}`)
+		}
+	})
+	runner := ReportRunner{FredCollector: client, FredSeries: []string{"SOFR", "IORB"}}
+	report, err := runner.Run()
+	if err != nil {
+		t.Fatal(err)
+	}
+	spread := report.Fred.Spread
+	if spread == nil || spread.Date.Format(time.DateOnly) != "2026-11-18" || math.Abs(spread.Value-3) > 1e-8 {
+		t.Fatalf("spread = %+v", spread)
 	}
 }

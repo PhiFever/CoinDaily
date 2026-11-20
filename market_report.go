@@ -58,19 +58,36 @@ body{font-family:Arial,sans-serif;margin:20px;background:#f5f5f5;color:#2c3e50}.
 		body.WriteString(`</div>`)
 	}
 
+	if report.Fred.Configured {
+		body.WriteString(`<div class="section"><h2>资金面（FRED）</h2><div class="meta">FRED 数据按观测日发布，通常滞后 1 个交易日</div>`)
+		writeHTMLWarning(&body, report.Fred.Warning)
+		if len(report.Fred.Items) > 0 {
+			body.WriteString(`<table><thead><tr><th>序列</th><th>最新值</th><th>观测日</th><th>较前值</th></tr></thead><tbody>`)
+			for _, item := range report.Fred.Items {
+				latest := item.Observations[0]
+				fmt.Fprintf(&body, `<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>`, html.EscapeString(fredSeriesName(item.ID)), formatMarketNumber(latest.Value), latest.Date.Format(time.DateOnly), formatFredChange(item))
+			}
+			if spread := report.Fred.Spread; spread != nil {
+				fmt.Fprintf(&body, `<tr><td>SOFR − IORB</td><td>%s</td><td>%s</td><td>N/A</td></tr>`, formatFredSpread(spread), spread.Date.Format(time.DateOnly))
+			}
+			body.WriteString(`</tbody></table>`)
+		}
+		body.WriteString(`</div>`)
+	}
+
 	body.WriteString(`<div class="footer">“资金动向”是成交、市值、持仓与资金费率代理指标，不代表经审计的资金流。<br>此报表由 CoinDaily 自动生成</div></body></html>`)
 	return body.String()
 }
 
-func (r *ReportGenerator) GenerateMarketDiscordEmbed(report *MarketReport) *DiscordEmbed {
-	fields := make([]EmbedField, 0, len(report.Crypto.Items)+len(report.Stocks.Items)+len(report.Perpetuals.Items)*3+6)
+func (r *ReportGenerator) GenerateMarketDiscordEmbeds(report *MarketReport) []*DiscordEmbed {
+	var sections []discordFieldSection
 	if report.Crypto.Configured {
-		fields = append(fields, discordSectionHeader("🪙 加密货币", fmt.Sprintf("CoinGecko · %d 个标的", len(report.Crypto.Items))))
+		section := discordFieldSection{header: discordSectionHeader("🪙 加密货币", fmt.Sprintf("CoinGecko · %d 个标的", len(report.Crypto.Items)))}
 		if report.Crypto.Warning != "" {
-			fields = append(fields, warningField("加密货币", report.Crypto.Warning))
+			section.add(warningField("加密货币", report.Crypto.Warning))
 		}
 		for _, coin := range report.Crypto.Items {
-			fields = append(fields, EmbedField{
+			section.add(EmbedField{
 				Name: fmt.Sprintf("%s · %s", strings.ToUpper(coin.Symbol), coin.Name),
 				Value: discordCompactMetrics(
 					"**$"+formatMarketNumber(coin.CurrentPrice)+"**",
@@ -83,14 +100,15 @@ func (r *ReportGenerator) GenerateMarketDiscordEmbed(report *MarketReport) *Disc
 				Inline: true,
 			})
 		}
+		sections = append(sections, section)
 	}
 	if report.Stocks.Configured {
-		fields = append(fields, discordSectionHeader("🇺🇸 美股 / ETF", fmt.Sprintf("Alpaca · 延迟 SIP · %d 个标的", len(report.Stocks.Items))))
+		section := discordFieldSection{header: discordSectionHeader("🇺🇸 美股 / ETF", fmt.Sprintf("Alpaca · 延迟 SIP · %d 个标的", len(report.Stocks.Items)))}
 		if report.Stocks.Warning != "" {
-			fields = append(fields, warningField("美股 / ETF", report.Stocks.Warning))
+			section.add(warningField("美股 / ETF", report.Stocks.Warning))
 		}
 		for _, stock := range report.Stocks.Items {
-			fields = append(fields, EmbedField{
+			section.add(EmbedField{
 				Name: stock.Symbol,
 				Value: discordCompactMetrics(
 					"**$"+formatMarketNumber(stock.Price)+"**",
@@ -104,14 +122,15 @@ func (r *ReportGenerator) GenerateMarketDiscordEmbed(report *MarketReport) *Disc
 				Inline: true,
 			})
 		}
+		sections = append(sections, section)
 	}
 	if report.Perpetuals.Configured {
-		fields = append(fields, discordSectionHeader("♾️ Hyperliquid 永续", fmt.Sprintf("公开 Info API · %d 个合约", len(report.Perpetuals.Items))))
+		section := discordFieldSection{header: discordSectionHeader("♾️ Hyperliquid 永续", fmt.Sprintf("公开 Info API · %d 个合约", len(report.Perpetuals.Items)))}
 		if report.Perpetuals.Warning != "" {
-			fields = append(fields, warningField("Hyperliquid 永续", report.Perpetuals.Warning))
+			section.add(warningField("Hyperliquid 永续", report.Perpetuals.Warning))
 		}
 		for _, perp := range report.Perpetuals.Items {
-			fields = append(fields,
+			section.add(
 				EmbedField{
 					Name: "📈 " + perp.Symbol + " · 行情",
 					Value: discordCompactMetrics(
@@ -143,17 +162,129 @@ func (r *ReportGenerator) GenerateMarketDiscordEmbed(report *MarketReport) *Disc
 				},
 			)
 		}
+		sections = append(sections, section)
 	}
 
-	embed := &DiscordEmbed{
+	if report.Fred.Configured {
+		section := discordFieldSection{header: discordSectionHeader("🏦 资金面", fmt.Sprintf("FRED · %d 个序列", len(report.Fred.Items)))}
+		if report.Fred.Warning != "" {
+			section.add(warningField("资金面", report.Fred.Warning))
+		}
+		for _, item := range report.Fred.Items {
+			latest := item.Observations[0]
+			section.add(EmbedField{
+				Name:   fredSeriesName(item.ID),
+				Value:  discordCompactMetrics("**"+formatMarketNumber(latest.Value)+"**", "Δ 前值 "+formatFredChange(item), "📅 "+latest.Date.Format("01-02")),
+				Inline: true,
+			})
+		}
+		if spread := report.Fred.Spread; spread != nil {
+			section.add(EmbedField{Name: "SOFR − IORB", Value: formatFredSpread(spread) + " · " + spread.Date.Format("01-02"), Inline: true})
+		}
+		sections = append(sections, section)
+	}
+
+	first := &DiscordEmbed{
 		Title:       "📈 市场行情报表",
 		Description: formatDiscordTime(report.GeneratedAt) + "  ·  *资金动向为成交 / 市值 / 持仓代理指标*",
 		Color:       marketReportColor(report),
-		Fields:      fields,
-		Footer:      &EmbedFooter{Text: strings.Join(configuredSourceNames(report), " · ") + " | CoinDaily"},
-		Timestamp:   report.GeneratedAt.Format(time.RFC3339),
 	}
-	return truncateEmbedIfNeeded(embed)
+	footer := &EmbedFooter{Text: strings.Join(configuredSourceNames(report), " · ") + " | CoinDaily"}
+	pages := []*DiscordEmbed{first}
+	current := first
+	nextPage := func() {
+		current = &DiscordEmbed{Title: fmt.Sprintf("📈 市场行情报表（续 %d）", len(pages)+1), Color: first.Color}
+		pages = append(pages, current)
+	}
+
+	for i, section := range sections {
+		lastSection := i == len(sections)-1
+		var finalFooter *EmbedFooter
+		if lastSection {
+			finalFooter = footer
+		}
+		if len(current.Fields) > 0 && !section.fits(current, finalFooter) {
+			nextPage()
+		}
+		current.Fields = append(current.Fields, section.header)
+		for j, group := range section.groups {
+			candidate := *current
+			candidate.Fields = append(current.Fields, group...)
+			if j == len(section.groups)-1 {
+				candidate.Footer = finalFooter
+			}
+			if !exceedsDiscordLimits(&candidate) {
+				current.Fields = candidate.Fields
+				continue
+			}
+			nextPage()
+			header := section.header
+			header.Name += "（续）"
+			current.Fields = append([]EmbedField{header}, group...)
+		}
+	}
+	current.Footer = footer
+	current.Timestamp = report.GeneratedAt.Format(time.RFC3339)
+	for _, page := range pages {
+		truncateEmbedIfNeeded(page)
+	}
+	return pages
+}
+
+type discordFieldSection struct {
+	header EmbedField
+	groups [][]EmbedField
+}
+
+// Fields added together (such as the three cards for one perpetual) stay on one page.
+func (s *discordFieldSection) add(fields ...EmbedField) {
+	for i := range fields {
+		fields[i].Name = truncateText(fields[i].Name, maxFieldNameLength)
+		fields[i].Value = truncateText(fields[i].Value, maxFieldValueLength)
+	}
+	s.groups = append(s.groups, fields)
+}
+
+func (s discordFieldSection) fits(page *DiscordEmbed, footer *EmbedFooter) bool {
+	candidate := *page
+	candidate.Footer = footer
+	candidate.Fields = append(candidate.Fields, s.header)
+	for _, group := range s.groups {
+		candidate.Fields = append(candidate.Fields, group...)
+		if len(candidate.Fields) > maxEmbedFields {
+			return false
+		}
+	}
+	return !exceedsDiscordLimits(&candidate)
+}
+
+func exceedsDiscordLimits(embed *DiscordEmbed) bool {
+	return len(embed.Fields) > maxEmbedFields || calculateEmbedLength(embed) > maxEmbedTotalLength
+}
+
+var fredSeriesNames = map[string]string{
+	"BAMLH0A0HYM2": "高收益债利差 OAS (%)",
+	"VIXCLS":       "VIX",
+	"SOFR":         "SOFR (%)",
+	"IORB":         "IORB (%)",
+}
+
+func fredSeriesName(id string) string {
+	if name, ok := fredSeriesNames[id]; ok {
+		return name
+	}
+	return id
+}
+
+func formatFredChange(item FredSeries) string {
+	if change := item.Change(); change != nil {
+		return fmt.Sprintf("%+.2f", *change)
+	}
+	return "N/A"
+}
+
+func formatFredSpread(spread *FredObservation) string {
+	return fmt.Sprintf("%+.0f bp", spread.Value)
 }
 
 func writeHTMLWarning(body *strings.Builder, warning string) {
@@ -444,6 +575,9 @@ func configuredSourceNames(report *MarketReport) []string {
 	}
 	if report.Perpetuals.Configured {
 		sources = append(sources, "Hyperliquid")
+	}
+	if report.Fred.Configured {
+		sources = append(sources, "FRED")
 	}
 	return sources
 }

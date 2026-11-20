@@ -129,6 +129,22 @@ https://api.coingecko.com/api/v3/coins/list
 
 持仓快照保存在活动配置文件旁的 `.coindaily-state.json`，采用临时文件加原子替换写入。文件缺失、损坏或快照过期时，持仓变化显示 `N/A`，不会阻止报表发送。
 
+## FRED 资金面
+
+在 [FRED 官网申请 API key](https://fred.stlouisfed.org/docs/api/api_key.html)，将密钥和要跟踪的序列填入配置文件。
+
+```yaml
+fred:
+  api_key: "your_fred_api_key_here"
+  series:
+    - "BAMLH0A0HYM2"
+    - "VIXCLS"
+    - "SOFR"
+    - "IORB"
+```
+
+报表列出每个序列的最新观测日、数值和较前一次有效观测的变化。高收益债利差和 VIX 分别反映信用风险和市场波动。配置 SOFR 和 IORB 后，报表还会按最近的共同观测日计算两者的利差，单位为基点（bp）。FRED 数据通常滞后一个交易日。
+
 ## Gmail 配置说明
 
 如果使用 Gmail，需要：

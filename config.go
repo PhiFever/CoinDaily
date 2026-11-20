@@ -20,6 +20,11 @@ type Config struct {
 		Feed      string `yaml:"feed"`
 	} `yaml:"alpaca"`
 
+	Fred struct {
+		APIKey string   `yaml:"api_key"`
+		Series []string `yaml:"series"`
+	} `yaml:"fred"`
+
 	Hyperliquid struct {
 		Perpetuals []string `yaml:"perpetuals"`
 	} `yaml:"hyperliquid"`
@@ -98,6 +103,9 @@ func validateConfig(config *Config) error {
 			return fmt.Errorf("alpaca.secret_key is required when stocks are configured")
 		}
 	}
+	if len(config.Fred.Series) > 0 && strings.TrimSpace(config.Fred.APIKey) == "" {
+		return fmt.Errorf("fred.api_key is required when fred.series is configured")
+	}
 	for _, symbol := range config.Hyperliquid.Perpetuals {
 		parts := strings.Split(symbol, ":")
 		if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" || strings.TrimSpace(parts[1]) == "" {
@@ -139,8 +147,8 @@ func validateConfig(config *Config) error {
 		}
 	}
 
-	if len(config.Coins) == 0 && len(config.Stocks) == 0 && len(config.Hyperliquid.Perpetuals) == 0 {
-		return fmt.Errorf("at least one coin, stock, or perpetual must be specified")
+	if len(config.Coins) == 0 && len(config.Stocks) == 0 && len(config.Hyperliquid.Perpetuals) == 0 && len(config.Fred.Series) == 0 {
+		return fmt.Errorf("at least one coin, stock, perpetual, or FRED series must be specified")
 	}
 	if config.Schedule.Hour < 0 || config.Schedule.Hour > 23 {
 		return fmt.Errorf("schedule.hour must be between 0 and 23")

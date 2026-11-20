@@ -14,6 +14,15 @@ hyperliquid:
   perpetuals:
     - "xyz:ZHIPU"
 
+# FRED 资金面（配置序列时需要 API key）
+fred:
+  api_key: "your_fred_api_key_here"
+  series:
+    - "BAMLH0A0HYM2"
+    - "VIXCLS"
+    - "SOFR"
+    - "IORB"
+
 # 邮件配置（可选，如果配置了 Discord 则非必需）
 email:
   smtp_server: "smtp.gmail.com"
@@ -43,11 +52,17 @@ coins:
   - "chainlink"
   - "virtual-protocol"
   - "near"
+  - "tether"
+  - "usd-coin"
 
 # 要跟踪的美国上市股票或 ETF 代码
 stocks:
   - "QQQ"
   - "SPCX"
+  - "TLT"
+  - "GLD"
+  - "UUP"
+  - "HYG"
 
 # 定时发送时间
 schedule:

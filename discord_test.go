@@ -1,8 +1,10 @@
 package main
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -156,5 +158,28 @@ func TestTruncateEmbedPreservesUTF8AndDiscordLimits(t *testing.T) {
 	}
 	if calculateEmbedLength(embed) > maxEmbedTotalLength {
 		t.Fatalf("total embed length = %d", calculateEmbedLength(embed))
+	}
+}
+
+func TestSendMarketReportMessages(t *testing.T) {
+	report := largeDiscordReport()
+	want := NewReportGenerator().GenerateMarketDiscordEmbeds(report)
+	var received []*DiscordEmbed
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var msg discordMessage
+		if err := json.NewDecoder(r.Body).Decode(&msg); err != nil || len(msg.Embeds) != 1 {
+			t.Errorf("expected one embed per message: %v", err)
+			return
+		}
+		received = append(received, &msg.Embeds[0])
+	}))
+	defer server.Close()
+	sender := NewDiscordSender("token", "channel", false, "")
+	sender.apiBaseURL = server.URL
+	if err := sender.SendMarketReport(report); err != nil {
+		t.Fatal(err)
+	}
+	if len(received) < 2 || !reflect.DeepEqual(received, want) {
+		t.Errorf("received %d messages for %d embeds, expected all pages in order", len(received), len(want))
 	}
 }

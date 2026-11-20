@@ -211,8 +211,12 @@ func (d *DiscordSender) SendMarketReport(report *MarketReport) error {
 	if !d.IsConfigured() {
 		return nil
 	}
-	embed := NewReportGenerator().GenerateMarketDiscordEmbed(report)
-	return d.SendEmbed(embed)
+	for i, embed := range NewReportGenerator().GenerateMarketDiscordEmbeds(report) {
+		if err := d.SendEmbed(embed); err != nil {
+			return fmt.Errorf("Discord 市场报表第 %d 条消息发送失败: %w", i+1, err)
+		}
+	}
+	return nil
 }
 
 // Discord Embed 字符限制

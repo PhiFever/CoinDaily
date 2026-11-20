@@ -20,6 +20,10 @@ type PerpetualCollector interface {
 	GetPerpetualPrices(symbols []string, now time.Time) ([]PerpetualPrice, error)
 }
 
+type FredCollector interface {
+	GetSeries(ids []string) ([]FredSeries, error)
+}
+
 type EmailReportSender interface {
 	SendReport(subject, htmlContent string) error
 }
@@ -29,6 +33,8 @@ type DiscordReportSender interface {
 }
 
 type ReportRunner struct {
+	FredSeries       []string
+	FredCollector    FredCollector
 	CoinIDs          []string
 	StockSymbols     []string
 	PerpetualSymbols []string
@@ -100,6 +106,20 @@ func (r *ReportRunner) Run() (*MarketReport, error) {
 			if len(items) > 0 {
 				r.applyPerpetualState(report)
 			}
+		}
+	}
+
+	if len(r.FredSeries) > 0 {
+		var items []FredSeries
+		var err error
+		if r.FredCollector == nil {
+			err = errors.New("FRED collector is unavailable")
+		} else {
+			items, err = r.FredCollector.GetSeries(r.FredSeries)
+		}
+		report.Fred = FredSection{Configured: true, Items: items, Spread: sofrIORBSpread(items), Warning: sectionWarning("FRED", len(items), err)}
+		if failure := sourceFailure("FRED", len(items), err); failure != nil {
+			sourceErrors = append(sourceErrors, failure)
 		}
 	}
 
